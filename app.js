@@ -11,9 +11,6 @@ document.addEventListener('DOMContentLoaded', () => {
     'https://thingproxy.freeboard.io/fetch/'
   ];
 
-  // Hash SHA-256 de la clave por defecto "zaswear"
-  const PASSWORD_HASH = '7cf13c2d2eeabe604c22220957c00a9ff6859f6411c5e91401a5f38f265ad6f1';
-
   let state = {
     feeds: [],           // Suscripciones: {url, nombre, categoria}
     articles: [],        // Artículos en caché: {id, title, link, excerpt, content, date, feedUrl, read, starred}
@@ -64,11 +61,45 @@ document.addEventListener('DOMContentLoaded', () => {
     loginForm: document.getElementById('login-form'),
     loginPasswordInput: document.getElementById('login-password-input'),
     loginErrorMsg: document.getElementById('login-error-msg'),
-    toggleHashTools: document.getElementById('toggle-hash-tools'),
-    hashToolsWrapper: document.getElementById('hash-tools-wrapper'),
-    hashPasswordInput: document.getElementById('hash-password-input'),
-    hashOutput: document.getElementById('hash-output')
   };
+
+  // --- AYUDANTES DE SEGURIDAD (sanitización de salida) ---
+  // Escapa texto para insertarlo de forma segura en HTML (evita XSS por interpolación)
+  function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+  // Solo permite esquemas seguros; bloquea javascript:, data:, etc.
+  function safeUrl(url) {
+    try {
+      const u = new URL(url, location.href);
+      return ['http:', 'https:', 'mailto:'].includes(u.protocol) ? u.href : '#';
+    } catch { return '#'; }
+  }
+  // Higieniza HTML de feeds (terceros no confiables) antes de renderizarlo
+  function sanitizeFeedHtml(html) {
+    if (window.DOMPurify) {
+      return DOMPurify.sanitize(html, {
+        USE_PROFILES: { html: true },
+        FORBID_TAGS: ['style', 'form', 'input', 'iframe', 'object', 'embed'],
+        FORBID_ATTR: ['style']
+      });
+    }
+    // Fallback ultra-conservador si DOMPurify no cargó: solo texto
+    const tmp = document.createElement('div');
+    tmp.textContent = html;
+    return tmp.innerHTML;
+  }
+  // Notificación efímera no bloqueante (sustituye alert())
+  function toast(msg) {
+    const el = document.createElement('div');
+    el.className = 'toast';
+    el.setAttribute('role', 'status');
+    el.textContent = msg;
+    document.body.appendChild(el);
+    requestAnimationFrame(() => el.classList.add('show'));
+    setTimeout(() => { el.classList.remove('show'); setTimeout(() => el.remove(), 300); }, 2500);
+  }
 
   // --- INICIALIZADORES ---
 
@@ -96,23 +127,42 @@ document.addEventListener('DOMContentLoaded', () => {
     localStorage.setItem('chronos-theme', theme);
   }
 
-  // --- AYUDANTES DE CRIPTOGRAFÍA ---
-  async function sha256(message) {
-    const msgBuffer = new TextEncoder().encode(message);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  // --- AYUDANTES DE CRIPTOGRAFÍA (AES-GCM + PBKDF2 con salt) ---
+  // Salt persistente y aleatorio por dispositivo (no hay secreto en el código)
+  function getSalt() {
+    let hex = localStorage.getItem('chronos-salt');
+    if (!hex) {
+      const s = crypto.getRandomValues(new Uint8Array(16));
+      hex = Array.from(s).map(b => b.toString(16).padStart(2, '0')).join('');
+      localStorage.setItem('chronos-salt', hex);
+    }
+    return new Uint8Array(hex.match(/.{1,2}/g).map(b => parseInt(b, 16)));
   }
 
   async function getEncryptionKey(password) {
-    const rawKey = new TextEncoder().encode(password.padEnd(32, '0').substring(0, 32)); // 256-bit
-    return await crypto.subtle.importKey(
-      'raw',
-      rawKey,
-      { name: 'AES-GCM' },
+    const base = await crypto.subtle.importKey(
+      'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']
+    );
+    return crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt: getSalt(), iterations: 150000, hash: 'SHA-256' },
+      base,
+      { name: 'AES-GCM', length: 256 },
       false,
       ['encrypt', 'decrypt']
     );
+  }
+
+  // Valida la clave del vault descifrando un verificador local (sin hash embebido).
+  // En el primer uso, fija la clave introducida como la del vault.
+  async function verifyPassword(password) {
+    if (!password) return false;
+    const v = localStorage.getItem('chronos-verifier');
+    if (!v) {
+      const enc = await encryptData('chronos-ok', password);
+      if (enc) localStorage.setItem('chronos-verifier', enc);
+      return true;
+    }
+    return (await decryptData(v, password)) === 'chronos-ok';
   }
 
   async function encryptData(plaintext, password) {
@@ -165,26 +215,23 @@ document.addEventListener('DOMContentLoaded', () => {
   async function initData() {
     // Intentar leer sesión previa guardada en sessionStorage (dura hasta cerrar pestaña)
     const sessionKey = sessionStorage.getItem('chronos-session-key');
-    if (sessionKey) {
-      const hashed = await sha256(sessionKey);
-      if (hashed === PASSWORD_HASH) {
-        state.password = sessionKey;
-        
-        const decryptedFeeds = await decryptLocalStorage('chronos-feeds', sessionKey);
-        const decryptedArticles = await decryptLocalStorage('chronos-articles', sessionKey);
+    if (sessionKey && await verifyPassword(sessionKey)) {
+      state.password = sessionKey;
 
-        if (decryptedFeeds) state.feeds = JSON.parse(decryptedFeeds);
-        if (decryptedArticles) state.articles = JSON.parse(decryptedArticles);
+      const decryptedFeeds = await decryptLocalStorage('chronos-feeds', sessionKey);
+      const decryptedArticles = await decryptLocalStorage('chronos-articles', sessionKey);
 
-        // Ocultar pantalla de bloqueo
-        DOM.loginOverlay.classList.add('fade-out-lock');
+      if (decryptedFeeds) state.feeds = JSON.parse(decryptedFeeds);
+      if (decryptedArticles) state.articles = JSON.parse(decryptedArticles);
 
-        renderFeeds();
-        renderArticles();
-        updateCategoriesDatalist();
-        syncAllFeeds();
-        return;
-      }
+      // Ocultar pantalla de bloqueo
+      DOM.loginOverlay.classList.add('fade-out-lock');
+
+      renderFeeds();
+      renderArticles();
+      updateCategoriesDatalist();
+      syncAllFeeds();
+      return;
     }
 
     // Inicializar UI de Login si no hay sesión
@@ -199,9 +246,8 @@ document.addEventListener('DOMContentLoaded', () => {
     DOM.loginForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const enteredPassword = DOM.loginPasswordInput.value;
-      const hashed = await sha256(enteredPassword);
 
-      if (hashed === PASSWORD_HASH) {
+      if (await verifyPassword(enteredPassword)) {
         // Clave correcta!
         state.password = enteredPassword;
         sessionStorage.setItem('chronos-session-key', enteredPassword);
@@ -247,21 +293,6 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => {
           loginBox.classList.remove('shake-lock');
         }, 400);
-      }
-    });
-
-    // Herramientas de Clave (Generador de Hash SHA-256)
-    DOM.toggleHashTools.addEventListener('click', () => {
-      DOM.hashToolsWrapper.classList.toggle('hidden');
-    });
-
-    DOM.hashPasswordInput.addEventListener('input', async (e) => {
-      const password = e.target.value;
-      if (password) {
-        const hash = await sha256(password);
-        DOM.hashOutput.textContent = hash;
-      } else {
-        DOM.hashOutput.textContent = '[Hash SHA-256]';
       }
     });
   }
@@ -314,13 +345,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const res = await fetch(targetUrl);
         if (!res.ok) throw new Error(`Status ${res.status}`);
         const text = await res.text();
-        if (text && text.trim().startsWith('<') || text.includes('rss') || text.includes('xml')) {
-          return text; // Contenido XML válido
-        }
+        const trimmed = (text || '').trim();
         // Si allorigins retorna JSON envoltura
-        if (proxy.includes('allorigins') && text.startsWith('{')) {
+        if (proxy.includes('allorigins') && trimmed.startsWith('{')) {
           const json = JSON.parse(text);
           if (json.contents) return json.contents;
+        }
+        if (trimmed.startsWith('<') || trimmed.includes('<rss') || trimmed.includes('<feed') || trimmed.includes('<?xml')) {
+          return text; // Contenido XML válido
         }
       } catch (err) {
         error = err;
@@ -538,19 +570,27 @@ document.addEventListener('DOMContentLoaded', () => {
       renderFeeds();
     } catch (err) {
       console.error(`Error al sincronizar feed: ${feed.nombre}`, err);
+      throw err; // propagar para contabilizar fallos en syncAllFeeds
     }
   }
 
   // Sincronizar todos
   async function syncAllFeeds() {
-    document.getElementById('status-indicator').textContent = 'Sincronizando...';
-    document.getElementById('status-indicator').style.color = 'var(--accent-purple)';
+    const statusEl = document.getElementById('status-indicator');
+    statusEl.textContent = 'Sincronizando...';
+    statusEl.style.color = 'var(--accent-purple)';
 
     const promesas = state.feeds.map(feed => syncFeed(feed));
-    await Promise.allSettled(promesas);
+    const results = await Promise.allSettled(promesas);
+    const fallidos = results.filter(r => r.status === 'rejected').length;
 
-    document.getElementById('status-indicator').textContent = 'Sincronizado';
-    document.getElementById('status-indicator').style.color = '';
+    if (fallidos > 0) {
+      statusEl.textContent = `${fallidos} fuente${fallidos !== 1 ? 's' : ''} con error`;
+      statusEl.style.color = 'var(--accent-terracotta)';
+    } else {
+      statusEl.textContent = 'Sincronizado';
+      statusEl.style.color = '';
+    }
   }
 
   // --- LÓGICA DE RENDERIZADO UI ---
@@ -562,6 +602,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Opción: Todos los artículos
     const itemAll = document.createElement('li');
     itemAll.className = `feed-item ${state.activeFeed === 'all' ? 'active' : ''}`;
+    itemAll.setAttribute('role', 'button');
+    itemAll.tabIndex = 0;
+    itemAll.setAttribute('aria-label', 'Ver todas las lecturas');
     itemAll.innerHTML = `
       <div class="feed-item-info">
         <span class="feed-item-title">Todas las lecturas</span>
@@ -570,6 +613,9 @@ document.addEventListener('DOMContentLoaded', () => {
       ${getUnreadCountGlobal() > 0 ? `<span class="feed-unread-badge">${getUnreadCountGlobal()}</span>` : ''}
     `;
     itemAll.addEventListener('click', () => changeActiveFeed('all'));
+    itemAll.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); changeActiveFeed('all'); }
+    });
     DOM.feedList.appendChild(itemAll);
 
     // Listar categorías agrupadas de suscripciones
@@ -577,13 +623,16 @@ document.addEventListener('DOMContentLoaded', () => {
       const unreadCount = getUnreadCountForFeed(feed.url);
       const li = document.createElement('li');
       li.className = `feed-item ${state.activeFeed === feed.url ? 'active' : ''}`;
+      li.setAttribute('role', 'button');
+      li.tabIndex = 0;
+      li.setAttribute('aria-label', `Ver fuente: ${feed.nombre}`);
       li.innerHTML = `
         <div class="feed-item-info">
-          <span class="feed-item-title">${feed.nombre}</span>
-          <span class="feed-item-meta mono-text">${feed.categoria.toUpperCase()}</span>
+          <span class="feed-item-title">${escapeHtml(feed.nombre)}</span>
+          <span class="feed-item-meta mono-text">${escapeHtml((feed.categoria || '').toUpperCase())}</span>
         </div>
         ${unreadCount > 0 ? `<span class="feed-unread-badge">${unreadCount}</span>` : ''}
-        <button class="feed-item-delete" title="Eliminar suscripción">
+        <button class="feed-item-delete" aria-label="Eliminar suscripción a ${escapeHtml(feed.nombre)}" title="Eliminar suscripción">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
         </button>
       `;
@@ -596,6 +645,9 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
           changeActiveFeed(feed.url);
         }
+      });
+      li.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); changeActiveFeed(feed.url); }
       });
 
       DOM.feedList.appendChild(li);
@@ -653,15 +705,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
       card.innerHTML = `
         <div class="article-card-header">
-          <span class="article-card-source mono-text">${feedName.toUpperCase()}</span>
-          <span class="article-card-date mono-text">${readableDate}</span>
+          <span class="article-card-source mono-text">${escapeHtml(feedName.toUpperCase())}</span>
+          <span class="article-card-date mono-text">${escapeHtml(readableDate)}</span>
         </div>
-        <h3 class="article-card-title serif-text">${art.title}</h3>
-        <p class="article-card-excerpt">${art.excerpt}</p>
+        <h3 class="article-card-title serif-text">${escapeHtml(art.title)}</h3>
+        <p class="article-card-excerpt">${escapeHtml(art.excerpt)}</p>
       `;
 
-      card.addEventListener('click', () => {
-        openArticle(art.id);
+      card.setAttribute('role', 'button');
+      card.tabIndex = 0;
+      card.setAttribute('aria-label', `Abrir artículo: ${art.title}`);
+      card.addEventListener('click', () => openArticle(art.id));
+      card.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openArticle(art.id); }
       });
 
       DOM.articlesContainer.appendChild(card);
@@ -710,7 +766,7 @@ document.addEventListener('DOMContentLoaded', () => {
       starIcon.classList.remove('filled');
     }
 
-    DOM.externalLinkBtn.href = art.link;
+    DOM.externalLinkBtn.href = safeUrl(art.link);
 
     const readableDate = new Date(art.date).toLocaleDateString('es-ES', { 
       weekday: 'long', 
@@ -730,11 +786,11 @@ document.addEventListener('DOMContentLoaded', () => {
       translationBanner = `
         <div class="translation-alert">
           <p class="translation-alert-text">
-            💡 Este artículo fue redactado originalmente en su idioma original (${feed.lang.toUpperCase()}) y traducido en la lista. ¿Deseas traducir el cuerpo completo del artículo al español?
+            💡 Este artículo fue redactado originalmente en su idioma original (${escapeHtml(feed.lang.toUpperCase())}) y traducido en la lista. ¿Deseas traducir el cuerpo completo del artículo al español?
           </p>
           <div class="translation-alert-actions">
             <button id="translate-body-btn" class="btn-small">Traducir Cuerpo</button>
-            <a href="${art.link}" target="_blank" rel="noopener" class="btn-small">Ver en la Web Original</a>
+            <a href="${safeUrl(art.link)}" target="_blank" rel="noopener noreferrer" class="btn-small">Ver en la Web Original</a>
           </div>
         </div>
       `;
@@ -746,26 +802,27 @@ document.addEventListener('DOMContentLoaded', () => {
           </p>
           <div class="translation-alert-actions">
             <button id="restore-body-btn" class="btn-small">Ver texto original</button>
-            <a href="${art.link}" target="_blank" rel="noopener" class="btn-small">Ver en la Web Original</a>
+            <a href="${safeUrl(art.link)}" target="_blank" rel="noopener noreferrer" class="btn-small">Ver en la Web Original</a>
           </div>
         </div>
       `;
     }
 
-    // Sanitización muy básica para no romper nuestro layout de flex y grids
-    let cleanHTML = art.content;
-    // Si viene texto plano o XML escapado, asegurar saltos de línea
+    // El contenido del feed es de un tercero NO confiable: se higieniza con DOMPurify.
+    let cleanHTML = art.content || '';
+    // Si viene texto plano o XML escapado, asegurar saltos de línea (escapando el texto)
     if (!cleanHTML.includes('<p>') && !cleanHTML.includes('<br>')) {
-      cleanHTML = cleanHTML.split('\n').map(p => p.trim() ? `<p>${p}</p>` : '').join('');
+      cleanHTML = cleanHTML.split('\n').map(p => p.trim() ? `<p>${escapeHtml(p)}</p>` : '').join('');
     }
+    cleanHTML = sanitizeFeedHtml(cleanHTML);
 
     DOM.focusedArticleWrapper.innerHTML = `
       <div class="article-header">
         <div class="article-meta-info mono-text">
-          <span class="article-meta-feed">${feedName.toUpperCase()}</span>
-          <span class="article-meta-date">${readableDate}</span>
+          <span class="article-meta-feed">${escapeHtml(feedName.toUpperCase())}</span>
+          <span class="article-meta-date">${escapeHtml(readableDate)}</span>
         </div>
-        <h2 class="article-title-focused serif-text">${art.title}</h2>
+        <h2 class="article-title-focused serif-text">${escapeHtml(art.title)}</h2>
         ${translationBanner}
       </div>
       <div class="article-content serif-text">
@@ -863,11 +920,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const art = state.articles.find(a => a.id === state.activeArticleId);
     if (!art) return;
 
-    // Intentar API Web Share o copiar al portapapeles
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(art.link)
-        .then(() => alert('¡Enlace copiado al portapapeles!'))
-        .catch(() => alert('No se pudo copiar el enlace.'));
+    const url = safeUrl(art.link);
+    if (url === '#') { toast('Este artículo no tiene un enlace válido.'); return; }
+
+    // Preferir Web Share nativo (móvil); si no, copiar al portapapeles
+    if (navigator.share) {
+      navigator.share({ title: art.title, url }).catch(() => {});
+    } else if (navigator.clipboard) {
+      navigator.clipboard.writeText(url)
+        .then(() => toast('¡Enlace copiado al portapapeles!'))
+        .catch(() => toast('No se pudo copiar el enlace.'));
     }
   }
 
@@ -972,7 +1034,7 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'o': // Abrir original
         if (state.activeArticleId) {
           const art = state.articles.find(a => a.id === state.activeArticleId);
-          if (art) window.open(art.link, '_blank');
+          if (art) window.open(safeUrl(art.link), '_blank', 'noopener,noreferrer');
         }
         break;
       case 'escape': // Cerrar lector móvil / popovers
@@ -1041,7 +1103,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const categoria = DOM.feedCatInput.value.trim() || 'General';
 
     if (state.feeds.some(f => f.url === url)) {
-      alert('Ya estás suscrito a este feed.');
+      toast('Ya estás suscrito a este feed.');
       return;
     }
 
@@ -1155,19 +1217,19 @@ document.addEventListener('DOMContentLoaded', () => {
       const isSubscribed = state.feeds.some(f => f.url === item.url);
       const subscribeBtnHtml = isSubscribed
         ? `<button class="btn-small" disabled style="opacity:0.6; cursor:default;">Suscrito</button>`
-        : `<button class="btn-small btn-add-suggested" data-url="${item.url}">Añadir</button>`;
+        : `<button class="btn-small btn-add-suggested">Añadir</button>`;
 
       li.innerHTML = `
         <div class="discover-item-header">
-          <span class="discover-item-title">${item.nombre}</span>
-          <span class="discover-item-category">${item.categoria.toUpperCase()}</span>
+          <span class="discover-item-title">${escapeHtml(item.nombre)}</span>
+          <span class="discover-item-category">${escapeHtml((item.categoria || '').toUpperCase())}</span>
         </div>
-        <span class="discover-item-url">${item.url}</span>
+        <span class="discover-item-url">${escapeHtml(item.url)}</span>
         <div class="discover-item-actions">
           <span class="discover-status-badge unchecked" id="status-badge-${btoa(item.url).replace(/=/g, '').substring(0, 24)}">Sin verificar</span>
           <div class="discover-buttons">
-            <a href="${item.web}" target="_blank" rel="noopener" class="btn-text" style="font-size:0.7rem; padding:0.2rem 0.4rem;">Visitar</a>
-            <button class="btn-text btn-verify-suggested" data-url="${item.url}" style="font-size:0.7rem; padding:0.2rem 0.4rem;">Verificar</button>
+            <a href="${safeUrl(item.web)}" target="_blank" rel="noopener noreferrer" class="btn-text" style="font-size:0.7rem; padding:0.2rem 0.4rem;">Visitar</a>
+            <button class="btn-text btn-verify-suggested" style="font-size:0.7rem; padding:0.2rem 0.4rem;">Verificar</button>
             ${subscribeBtnHtml}
           </div>
         </div>

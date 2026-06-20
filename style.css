@@ -423,8 +423,11 @@ body {
 }
 
 .form-group input:focus {
-  outline: none;
   border-color: var(--border-ink);
+}
+.form-group input:focus-visible {
+  outline: 2px solid var(--accent-terracotta);
+  outline-offset: 2px;
 }
 
 .form-actions {
@@ -1169,5 +1172,67 @@ html[data-theme="dark"] .login-error {
   0%, 100% { transform: translateX(0); }
   20%, 60% { transform: translateX(-8px); }
   40%, 80% { transform: translateX(8px); }
+}
+
+/* ══════════════════════════════════════════════════
+   ACCESIBILIDAD
+   ══════════════════════════════════════════════════ */
+
+/* Foco de teclado visible en todo elemento interactivo (incluye tarjetas/feeds
+   que ahora tienen role="button" + tabindex) */
+:focus-visible {
+  outline: 2px solid var(--accent-terracotta);
+  outline-offset: 2px;
+}
+.article-card:focus-visible,
+.feed-item:focus-visible {
+  outline: 2px solid var(--accent-terracotta);
+  outline-offset: -2px;
+}
+
+/* Texto solo para lectores de pantalla */
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Respetar la preferencia de movimiento reducido */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ══════════════════════════════════════════════════
+   TOAST (notificación efímera no bloqueante)
+   ══════════════════════════════════════════════════ */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 2rem;
+  transform: translateX(-50%) translateY(1rem);
+  background: var(--text-ink);
+  color: var(--bg-paper);
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  padding: 0.6rem 1.1rem;
+  border-radius: 2px;
+  box-shadow: var(--shadow-editorial);
+  z-index: 1000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+.toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 

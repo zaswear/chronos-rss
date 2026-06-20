@@ -14,6 +14,9 @@
 
   <!-- Custom Stylesheet -->
   <link rel="stylesheet" href="style.css" />
+
+  <!-- Sanitización de HTML de feeds (vendorizado · Cure53 DOMPurify) -->
+  <script src="purify.min.js" defer></script>
 </head>
 <body>
 
@@ -34,7 +37,7 @@
     <div class="header-bottom">
       <span class="header-date mono-text" id="current-date-display">20 de Junio, 2026</span>
       <span class="header-tagline serif-text">"Reduciendo el ruido mental, destilando el tiempo"</span>
-      <span class="header-status mono-text" id="status-indicator">Sincronizado</span>
+      <span class="header-status mono-text" id="status-indicator" role="status" aria-live="polite">Sincronizado</span>
     </div>
   </header>
 
@@ -203,33 +206,21 @@
     </button>
   </nav>
 
-  <!-- Pantalla de Bloqueo Criptográfico -->
-  <div id="login-overlay" class="login-overlay">
+  <!-- Pantalla de Bloqueo Local (cifrado del vault en este dispositivo) -->
+  <div id="login-overlay" class="login-overlay" role="dialog" aria-modal="true" aria-labelledby="login-title">
     <div class="login-box">
       <div class="login-crest serif-text">⚔ CHRONOS ⚔</div>
-      <h2 class="serif-text">Archivo Protegido</h2>
-      <p class="login-tagline">Introduce la clave editorial para descifrar tus feeds e historial</p>
-      
+      <h2 class="serif-text" id="login-title">Archivo Protegido</h2>
+      <p class="login-tagline">Introduce tu clave para cifrar y descifrar tus feeds e historial en este dispositivo. La primera clave que introduzcas quedará fijada como la del archivo.</p>
+
       <form id="login-form">
         <div class="form-group" style="margin-bottom: 0.5rem;">
-          <input type="password" id="login-password-input" placeholder="••••••••" required autofocus style="text-align: center; font-size: 1.25rem; letter-spacing: 0.25em;" />
+          <label for="login-password-input" class="sr-only">Clave del archivo</label>
+          <input type="password" id="login-password-input" placeholder="••••••••" required autofocus autocomplete="current-password" style="text-align: center; font-size: 1.25rem; letter-spacing: 0.25em;" />
         </div>
-        <div id="login-error-msg" class="login-error hidden">Clave de descifrado incorrecta.</div>
+        <div id="login-error-msg" class="login-error hidden" role="alert">Clave de descifrado incorrecta.</div>
         <button type="submit" class="btn-primary" style="width: 100%; margin-top: 0.75rem;">Desbloquear Archivo</button>
       </form>
-
-      <div class="login-footer">
-        <button id="toggle-hash-tools" class="btn-text" style="font-size: 0.65rem; width: 100%; margin-top: 1.5rem; justify-content: center;">Generador de Hash de Contraseña</button>
-        <div id="hash-tools-wrapper" class="hash-tools-wrapper hidden">
-          <p class="mono-text" style="font-size: 0.65rem; margin: 0.5rem 0; line-height: 1.3; text-align: left;">
-            Genera un hash SHA-256 para colocar en tu código y cambiar la clave por defecto:
-          </p>
-          <input type="text" id="hash-password-input" placeholder="Escribe tu nueva clave..." style="width: 100%; font-size: 0.75rem; padding: 0.35rem;" />
-          <div class="hash-output-container" style="margin-top: 0.5rem; text-align: left;">
-            <code id="hash-output" class="mono-text" style="font-size: 0.65rem; word-break: break-all; display: block; background: var(--bg-sidebar); padding: 0.5rem; border: 1px solid var(--border-muted); user-select: all;">[Hash SHA-256]</code>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 

@@ -1,0 +1,44 @@
+[
+  {
+    "url": "https://elpais.com/rss/elpais/portada.xml",
+    "nombre": "El País (Portada)",
+    "categoria": "Noticias",
+    "lang": "es"
+  },
+  {
+    "url": "https://news.ycombinator.com/rss",
+    "nombre": "Hacker News",
+    "categoria": "Tecnología",
+    "lang": "en"
+  },
+  {
+    "url": "http://feeds.bbci.co.uk/news/world/rss.xml",
+    "nombre": "BBC News (Mundo)",
+    "categoria": "Noticias",
+    "lang": "en"
+  },
+  {
+    "url": "https://www.microsiervos.com/index.xml",
+    "nombre": "Microsiervos",
+    "categoria": "Ciencia & Blog",
+    "lang": "es"
+  },
+  {
+    "url": "https://feeds.weblogssl.com/xataka2",
+    "nombre": "Xataka",
+    "categoria": "Tecnología",
+    "lang": "es"
+  },
+  {
+    "url": "https://techcrunch.com/feed/",
+    "nombre": "TechCrunch",
+    "categoria": "Startups",
+    "lang": "en"
+  },
+  {
+    "url": "https://css-tricks.com/feed/",
+    "nombre": "CSS-Tricks",
+    "categoria": "Frontend",
+    "lang": "en"
+  }
+]

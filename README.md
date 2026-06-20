@@ -1,5 +1,7 @@
 # Chronos RSS · El eco del tiempo
 
+> **Demo en Vivo:** [https://zaswear.github.io/chronos-rss/](https://zaswear.github.io/chronos-rss/)
+
 Chronos RSS es un lector de feeds RSS premium y minimalista enfocado en la lectura pausada y la reducción del ruido informativo (infoxicación). Diseñado bajo una estética de **periódico retro-futurista de alta gama**, funciona completamente en el cliente (navegador) de forma rápida y ligera.
 
 ---

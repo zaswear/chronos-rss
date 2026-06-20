@@ -12,7 +12,7 @@ El diseño de la aplicación evoca las columnas impresas de la prensa clásica c
 * **Paleta de Colores**:
   * **Modo Claro (Papel Prensa)**: Tonos crema suaves (`#FAF7F2`), texto tinta negro carbón (`#1F1F1F`) y acentos terracota.
   * **Modo Oscuro (Tinta de Carbón)**: Fondo carbón oscuro (`#121212`), texto crema claro (`#EAE6DF`) y acentos en naranja ámbar.
-* **Detalles Premium**: Doble línea editorial en cabeceras, bordes finos definidos, elevaciones de tarjeta planas (`shadow-editorial`), animaciones de shimmer para estados de carga y smooth scroll nativo gracias a Lenis.
+* **Detalles Premium**: Doble línea editorial en cabeceras, bordes finos definidos, elevaciones de tarjeta planas (`shadow-editorial`), animaciones de shimmer para estados de carga y scroll suave nativo.
 
 ---
 

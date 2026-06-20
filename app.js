@@ -78,25 +78,6 @@ document.addEventListener('DOMContentLoaded', () => {
     DOM.currentDateDisplay.textContent = new Date().toLocaleDateString('es-ES', opciones);
   }
 
-  // 2. Lenis Smooth Scroll
-  let lenis;
-  function initLenis() {
-    lenis = new Lenis({
-      duration: 1.2,
-      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-      orientation: 'vertical',
-      gestureOrientation: 'vertical',
-      smoothWheel: true,
-      wheelMultiplier: 1,
-      infinite: false
-    });
-
-    function raf(time) {
-      lenis.raf(time);
-      requestAnimationFrame(raf);
-    }
-    requestAnimationFrame(raf);
-  }
 
   // 3. Cargar Tema (Claro/Oscuro)
   function initTheme() {
@@ -855,13 +836,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // En móvil, deslizar panel del lector hacia arriba
     if (window.innerWidth <= 900) {
       DOM.articleReader.classList.add('open');
-      if (lenis) lenis.stop(); // Detener smooth scroll de fondo
+
     }
   }
 
   function closeArticleReader() {
     DOM.articleReader.classList.remove('open');
-    if (lenis) lenis.start(); // Reactivar smooth scroll de fondo
+
     state.activeArticleId = null;
     renderArticles();
   }
@@ -1253,7 +1234,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- EJECUCIÓN INICIAL ---
   initDate();
-  initLenis();
   initTheme();
   initData();
 

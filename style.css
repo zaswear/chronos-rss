@@ -1078,3 +1078,95 @@ html[data-theme="dark"] .discover-status-badge.invalid {
   gap: 0.35rem;
 }
 
+/* --- Pantalla de Bloqueo / Login Criptográfico --- */
+.login-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: var(--bg-paper);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1.5rem;
+  transition: opacity 0.4s ease, transform 0.4s ease;
+  backdrop-filter: blur(10px);
+}
+
+.login-overlay.fade-out-lock {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(1.05);
+}
+
+.login-box {
+  width: 100%;
+  max-width: 420px;
+  background-color: var(--bg-card);
+  border: 4px double var(--border-ink);
+  padding: 2.5rem 2rem;
+  box-shadow: var(--shadow-editorial);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.login-crest {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.25em;
+  color: var(--accent-terracotta);
+}
+
+.login-tagline {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin-bottom: 0.5rem;
+}
+
+.login-error {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #991b1b;
+  background-color: #fee2e2;
+  border: 1px solid #fca5a5;
+  padding: 0.5rem;
+  margin-top: 0.5rem;
+  font-family: var(--font-sans);
+}
+
+html[data-theme="dark"] .login-error {
+  background-color: #7f1d1d;
+  color: #fca5a5;
+  border-color: #991b1b;
+}
+
+.login-error.hidden {
+  display: none !important;
+}
+
+.hash-tools-wrapper {
+  margin-top: 1rem;
+  border-top: 1px dashed var(--border-muted);
+  padding-top: 1rem;
+}
+
+.hash-tools-wrapper.hidden {
+  display: none !important;
+}
+
+/* Animación de vibración para contraseña incorrecta */
+.shake-lock {
+  animation: shake-anim 0.4s ease-in-out;
+}
+
+@keyframes shake-anim {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-8px); }
+  40%, 80% { transform: translateX(8px); }
+}
+

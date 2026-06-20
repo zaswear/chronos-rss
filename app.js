@@ -11,13 +11,18 @@ document.addEventListener('DOMContentLoaded', () => {
     'https://thingproxy.freeboard.io/fetch/'
   ];
 
+  // Hash SHA-256 de la clave por defecto "zaswear"
+  const PASSWORD_HASH = '7cf13c2d2eeabe604c22220957c00a9ff6859f6411c5e91401a5f38f265ad6f1';
+
   let state = {
     feeds: [],           // Suscripciones: {url, nombre, categoria}
     articles: [],        // Artículos en caché: {id, title, link, excerpt, content, date, feedUrl, read, starred}
     activeFeed: 'all',   // 'all', 'unread', 'starred', o una URL de feed específica
     activeArticleId: null,
     searchQuery: '',
-    theme: 'light'
+    theme: 'light',
+    password: null,      // Clave de descifrado en sesión
+    suggestions: []
   };
 
   // --- SELECTORES DOM ---
@@ -54,7 +59,15 @@ document.addEventListener('DOMContentLoaded', () => {
     myFeedsWrapper: document.getElementById('my-feeds-wrapper'),
     discoverFeedsWrapper: document.getElementById('discover-feeds-wrapper'),
     discoverListContainer: document.getElementById('discover-list-container'),
-    reloadDiscoverBtn: document.getElementById('reload-discover-btn')
+    reloadDiscoverBtn: document.getElementById('reload-discover-btn'),
+    loginOverlay: document.getElementById('login-overlay'),
+    loginForm: document.getElementById('login-form'),
+    loginPasswordInput: document.getElementById('login-password-input'),
+    loginErrorMsg: document.getElementById('login-error-msg'),
+    toggleHashTools: document.getElementById('toggle-hash-tools'),
+    hashToolsWrapper: document.getElementById('hash-tools-wrapper'),
+    hashPasswordInput: document.getElementById('hash-password-input'),
+    hashOutput: document.getElementById('hash-output')
   };
 
   // --- INICIALIZADORES ---
@@ -102,45 +115,189 @@ document.addEventListener('DOMContentLoaded', () => {
     localStorage.setItem('chronos-theme', theme);
   }
 
-  // 4. Cargar Fuentes por defecto y caché local
+  // --- AYUDANTES DE CRIPTOGRAFÍA ---
+  async function sha256(message) {
+    const msgBuffer = new TextEncoder().encode(message);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  async function getEncryptionKey(password) {
+    const rawKey = new TextEncoder().encode(password.padEnd(32, '0').substring(0, 32)); // 256-bit
+    return await crypto.subtle.importKey(
+      'raw',
+      rawKey,
+      { name: 'AES-GCM' },
+      false,
+      ['encrypt', 'decrypt']
+    );
+  }
+
+  async function encryptData(plaintext, password) {
+    try {
+      const key = await getEncryptionKey(password);
+      const iv = crypto.getRandomValues(new Uint8Array(12)); // 12-byte IV for GCM
+      const encoded = new TextEncoder().encode(plaintext);
+      const ciphertext = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv },
+        key,
+        encoded
+      );
+      const ivHex = Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join('');
+      const ctHex = Array.from(new Uint8Array(ciphertext)).map(b => b.toString(16).padStart(2, '0')).join('');
+      return `${ivHex}:${ctHex}`;
+    } catch (err) {
+      console.error('Error de encriptación:', err);
+      return null;
+    }
+  }
+
+  async function decryptData(cipheredText, password) {
+    try {
+      if (!cipheredText || !cipheredText.includes(':')) return null;
+      const parts = cipheredText.split(':');
+      const ivHex = parts[0];
+      const ctHex = parts[1];
+      const iv = new Uint8Array(ivHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+      const ciphertext = new Uint8Array(ctHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+      const key = await getEncryptionKey(password);
+      const decrypted = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv },
+        key,
+        ciphertext
+      );
+      return new TextDecoder().decode(decrypted);
+    } catch (err) {
+      console.warn('Error de desencriptación (clave incorrecta o datos corruptos):', err);
+      return null;
+    }
+  }
+
+  async function decryptLocalStorage(key, password) {
+    const cipheredText = localStorage.getItem(key);
+    if (!cipheredText) return null;
+    return await decryptData(cipheredText, password);
+  }
+
+  // 4. Cargar Fuentes por defecto y caché local (Bloqueo criptográfico)
   async function initData() {
-    // Cargar feeds de localStorage o de feeds-default.json
-    const savedFeeds = localStorage.getItem('chronos-feeds');
-    if (savedFeeds) {
-      state.feeds = JSON.parse(savedFeeds);
-    } else {
-      try {
-        const response = await fetch('./feeds-default.json');
-        state.feeds = await response.json();
-        saveFeedsToStorage();
-      } catch (err) {
-        console.warn('No se pudo cargar feeds-default.json, inicializando vacío.', err);
-        state.feeds = [];
+    // Intentar leer sesión previa guardada en sessionStorage (dura hasta cerrar pestaña)
+    const sessionKey = sessionStorage.getItem('chronos-session-key');
+    if (sessionKey) {
+      const hashed = await sha256(sessionKey);
+      if (hashed === PASSWORD_HASH) {
+        state.password = sessionKey;
+        
+        const decryptedFeeds = await decryptLocalStorage('chronos-feeds', sessionKey);
+        const decryptedArticles = await decryptLocalStorage('chronos-articles', sessionKey);
+
+        if (decryptedFeeds) state.feeds = JSON.parse(decryptedFeeds);
+        if (decryptedArticles) state.articles = JSON.parse(decryptedArticles);
+
+        // Ocultar pantalla de bloqueo
+        DOM.loginOverlay.classList.add('fade-out-lock');
+
+        renderFeeds();
+        renderArticles();
+        updateCategoriesDatalist();
+        syncAllFeeds();
+        return;
       }
     }
 
-    // Cargar artículos e historial
-    const savedArticles = localStorage.getItem('chronos-articles');
-    if (savedArticles) {
-      state.articles = JSON.parse(savedArticles);
+    // Inicializar UI de Login si no hay sesión
+    initLoginUI();
+  }
+
+  function initLoginUI() {
+    // Asegurar que el overlay está visible
+    DOM.loginOverlay.classList.remove('fade-out-lock');
+
+    // Manejar envío de formulario de login
+    DOM.loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const enteredPassword = DOM.loginPasswordInput.value;
+      const hashed = await sha256(enteredPassword);
+
+      if (hashed === PASSWORD_HASH) {
+        // Clave correcta!
+        state.password = enteredPassword;
+        sessionStorage.setItem('chronos-session-key', enteredPassword);
+
+        // Intentar desencriptar feeds y artículos existentes
+        const decryptedFeeds = await decryptLocalStorage('chronos-feeds', enteredPassword);
+        const decryptedArticles = await decryptLocalStorage('chronos-articles', enteredPassword);
+
+        if (decryptedFeeds) {
+          state.feeds = JSON.parse(decryptedFeeds);
+        } else {
+          // Si es la primera vez (no hay feeds en localStorage), cargar los recomendados
+          try {
+            const response = await fetch('./feeds-default.json');
+            state.feeds = await response.json();
+            await saveFeedsToStorage();
+          } catch (err) {
+            console.warn('No se pudo cargar feeds-default.json, inicializando vacío.', err);
+            state.feeds = [];
+          }
+        }
+
+        if (decryptedArticles) {
+          state.articles = JSON.parse(decryptedArticles);
+        }
+
+        // Esconder overlay con transición
+        DOM.loginOverlay.classList.add('fade-out-lock');
+
+        // Renderizar y sincronizar
+        renderFeeds();
+        renderArticles();
+        updateCategoriesDatalist();
+        syncAllFeeds();
+      } else {
+        // Clave incorrecta: Animación elástica y mensaje de error
+        DOM.loginErrorMsg.classList.remove('hidden');
+        const loginBox = DOM.loginOverlay.querySelector('.login-box');
+        loginBox.classList.add('shake-lock');
+        DOM.loginPasswordInput.value = '';
+        DOM.loginPasswordInput.focus();
+
+        setTimeout(() => {
+          loginBox.classList.remove('shake-lock');
+        }, 400);
+      }
+    });
+
+    // Herramientas de Clave (Generador de Hash SHA-256)
+    DOM.toggleHashTools.addEventListener('click', () => {
+      DOM.hashToolsWrapper.classList.toggle('hidden');
+    });
+
+    DOM.hashPasswordInput.addEventListener('input', async (e) => {
+      const password = e.target.value;
+      if (password) {
+        const hash = await sha256(password);
+        DOM.hashOutput.textContent = hash;
+      } else {
+        DOM.hashOutput.textContent = '[Hash SHA-256]';
+      }
+    });
+  }
+
+  // --- LÓGICA DE ALMACENAMIENTO (ENCRIPTADO ASÍNCRONO EN SEGUNDO PLANO) ---
+
+  async function saveFeedsToStorage() {
+    if (!state.password) return;
+    const ciphertext = await encryptData(JSON.stringify(state.feeds), state.password);
+    if (ciphertext) {
+      localStorage.setItem('chronos-feeds', ciphertext);
     }
-
-    // Renderizar fuentes y artículos cacheados inmediatamente
-    renderFeeds();
-    renderArticles();
-    updateCategoriesDatalist();
-
-    // Sincronizar con la red de forma asíncrona
-    syncAllFeeds();
   }
 
-  // --- LÓGICA DE ALMACENAMIENTO ---
+  async function saveArticlesToStorage() {
+    if (!state.password) return;
 
-  function saveFeedsToStorage() {
-    localStorage.setItem('chronos-feeds', JSON.stringify(state.feeds));
-  }
-
-  function saveArticlesToStorage() {
     // Para no exceder la cuota de localStorage (5MB), guardamos máximo los 40 artículos más recientes por feed
     const grouped = {};
     state.articles.forEach(art => {
@@ -150,9 +307,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const optimized = [];
     Object.keys(grouped).forEach(url => {
-      // Ordenar por fecha descendente
       const sorted = grouped[url].sort((a, b) => new Date(b.date) - new Date(a.date));
-      // Guardar los primeros 40 de este feed, y mantener cualquiera que esté guardado (starred)
       sorted.forEach((art, index) => {
         if (index < 40 || art.starred) {
           optimized.push(art);
@@ -161,7 +316,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     state.articles = optimized;
-    localStorage.setItem('chronos-articles', JSON.stringify(state.articles));
+    const ciphertext = await encryptData(JSON.stringify(state.articles), state.password);
+    if (ciphertext) {
+      localStorage.setItem('chronos-articles', ciphertext);
+    }
   }
 
   // --- ADQUISICIÓN Y PARSEO RSS (RED) ---

@@ -1,0 +1,86 @@
+[
+  {
+    "url": "https://www.vidaextra.com/index.xml",
+    "nombre": "VidaExtra",
+    "categoria": "Videojuegos",
+    "lang": "es",
+    "web": "https://www.vidaextra.com"
+  },
+  {
+    "url": "https://kotaku.com/rss",
+    "nombre": "Kotaku",
+    "categoria": "Videojuegos",
+    "lang": "en",
+    "web": "https://kotaku.com"
+  },
+  {
+    "url": "https://www.eurogamer.net/feed/news",
+    "nombre": "Eurogamer",
+    "categoria": "Videojuegos",
+    "lang": "en",
+    "web": "https://www.eurogamer.net"
+  },
+  {
+    "url": "https://danielmarin.naukas.com/feed/",
+    "nombre": "Eureka (Daniel Marín)",
+    "categoria": "Espacio",
+    "lang": "es",
+    "web": "https://danielmarin.naukas.com"
+  },
+  {
+    "url": "https://www.esa.int/rssfeed/Our_Activities/Space_Science",
+    "nombre": "Agencia Espacial Europea (ESA)",
+    "categoria": "Espacio",
+    "lang": "en",
+    "web": "https://www.esa.int"
+  },
+  {
+    "url": "https://huggingface.co/blog/feed.xml",
+    "nombre": "Hugging Face Blog",
+    "categoria": "Inteligencia Artificial",
+    "lang": "en",
+    "web": "https://huggingface.co/blog"
+  },
+  {
+    "url": "https://www.technologyreview.com/topic/artificial-intelligence/feed/",
+    "nombre": "MIT Tech Review - AI",
+    "categoria": "Inteligencia Artificial",
+    "lang": "en",
+    "web": "https://www.technologyreview.com"
+  },
+  {
+    "url": "https://www.theblackvault.com/documentarchive/feed/",
+    "nombre": "The Black Vault (UAP/UFO)",
+    "categoria": "UFOs & UAPs",
+    "lang": "en",
+    "web": "https://www.theblackvault.com"
+  },
+  {
+    "url": "https://www.uap.news/feed/",
+    "nombre": "UAP News",
+    "categoria": "UFOs & UAPs",
+    "lang": "en",
+    "web": "https://www.uap.news"
+  },
+  {
+    "url": "https://uxdesign.cc/feed",
+    "nombre": "UX Collective",
+    "categoria": "UX/UI & Vibe-Coding",
+    "lang": "en",
+    "web": "https://uxdesign.cc"
+  },
+  {
+    "url": "https://www.smashingmagazine.com/categories/ux-design/index.xml",
+    "nombre": "Smashing UX",
+    "categoria": "UX/UI & Vibe-Coding",
+    "lang": "en",
+    "web": "https://www.smashingmagazine.com"
+  },
+  {
+    "url": "https://dev.to/feed/tag/ux",
+    "nombre": "Dev.to - UX Trends",
+    "categoria": "UX/UI & Vibe-Coding",
+    "lang": "en",
+    "web": "https://dev.to"
+  }
+]

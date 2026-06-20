@@ -48,7 +48,13 @@ document.addEventListener('DOMContentLoaded', () => {
     mobileNavItems: document.querySelectorAll('.mobile-nav-item'),
     mobileAddFeedBtn: document.getElementById('mobile-add-feed-btn'),
     panes: document.querySelectorAll('.pane'),
-    articlesScroll: document.getElementById('articles-scroll-container')
+    articlesScroll: document.getElementById('articles-scroll-container'),
+    sidebarTabMy: document.getElementById('sidebar-tab-my'),
+    sidebarTabDiscover: document.getElementById('sidebar-tab-discover'),
+    myFeedsWrapper: document.getElementById('my-feeds-wrapper'),
+    discoverFeedsWrapper: document.getElementById('discover-feeds-wrapper'),
+    discoverListContainer: document.getElementById('discover-list-container'),
+    reloadDiscoverBtn: document.getElementById('reload-discover-btn')
   };
 
   // --- INICIALIZADORES ---
@@ -938,6 +944,154 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Teclado
   document.addEventListener('keydown', handleKeyboardShortcuts);
+
+  // --- SECCIÓN DESCUBRIR (SUGERENCIAS) ---
+  state.suggestions = [];
+  state.activeSidebarTab = 'my'; // 'my' o 'discover'
+
+  // Conmutador de pestañas de barra lateral
+  DOM.sidebarTabMy.addEventListener('click', () => {
+    DOM.sidebarTabMy.classList.add('active');
+    DOM.sidebarTabDiscover.classList.remove('active');
+    DOM.myFeedsWrapper.classList.remove('hidden');
+    DOM.discoverFeedsWrapper.classList.add('hidden');
+    state.activeSidebarTab = 'my';
+  });
+
+  DOM.sidebarTabDiscover.addEventListener('click', () => {
+    DOM.sidebarTabDiscover.classList.add('active');
+    DOM.sidebarTabMy.classList.remove('active');
+    DOM.discoverFeedsWrapper.classList.remove('hidden');
+    DOM.myFeedsWrapper.classList.add('hidden');
+    state.activeSidebarTab = 'discover';
+    if (state.suggestions.length === 0) {
+      loadSuggestions();
+    } else {
+      renderDiscover();
+    }
+  });
+
+  async function loadSuggestions() {
+    try {
+      const res = await fetch('./feeds-suggestions.json');
+      if (!res.ok) throw new Error('Status ' + res.status);
+      state.suggestions = await res.json();
+      // Mezclar sugerencias inicialmente
+      shuffleArray(state.suggestions);
+      renderDiscover();
+    } catch (err) {
+      console.warn('Error al cargar sugerencias de feeds:', err);
+      DOM.discoverListContainer.innerHTML = `<li class="reader-placeholder"><p>No se pudieron cargar sugerencias.</p></li>`;
+    }
+  }
+
+  function shuffleArray(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [array[i], array[j]] = [array[j], array[i]];
+    }
+  }
+
+  DOM.reloadDiscoverBtn.addEventListener('click', () => {
+    // Mezclar y volver a renderizar
+    shuffleArray(state.suggestions);
+    renderDiscover();
+  });
+
+  function renderDiscover() {
+    DOM.discoverListContainer.innerHTML = '';
+    
+    if (state.suggestions.length === 0) {
+      DOM.discoverListContainer.innerHTML = `<li class="reader-placeholder"><p>No hay sugerencias disponibles.</p></li>`;
+      return;
+    }
+
+    // Mostrar un subconjunto de sugerencias (máximo 6 para no saturar)
+    const subset = state.suggestions.slice(0, 6);
+
+    subset.forEach(item => {
+      const li = document.createElement('li');
+      li.className = 'discover-item';
+
+      const isSubscribed = state.feeds.some(f => f.url === item.url);
+      const subscribeBtnHtml = isSubscribed
+        ? `<button class="btn-small" disabled style="opacity:0.6; cursor:default;">Suscrito</button>`
+        : `<button class="btn-small btn-add-suggested" data-url="${item.url}">Añadir</button>`;
+
+      li.innerHTML = `
+        <div class="discover-item-header">
+          <span class="discover-item-title">${item.nombre}</span>
+          <span class="discover-item-category">${item.categoria.toUpperCase()}</span>
+        </div>
+        <span class="discover-item-url">${item.url}</span>
+        <div class="discover-item-actions">
+          <span class="discover-status-badge unchecked" id="status-badge-${btoa(item.url).replace(/=/g, '').substring(0, 24)}">Sin verificar</span>
+          <div class="discover-buttons">
+            <a href="${item.web}" target="_blank" rel="noopener" class="btn-text" style="font-size:0.7rem; padding:0.2rem 0.4rem;">Visitar</a>
+            <button class="btn-text btn-verify-suggested" data-url="${item.url}" style="font-size:0.7rem; padding:0.2rem 0.4rem;">Verificar</button>
+            ${subscribeBtnHtml}
+          </div>
+        </div>
+      `;
+
+      // Eventos
+      li.querySelector('.btn-verify-suggested')?.addEventListener('click', (e) => {
+        verifySuggestedFeed(item.url);
+      });
+
+      li.querySelector('.btn-add-suggested')?.addEventListener('click', (e) => {
+        subscribeSuggestedFeed(item);
+      });
+
+      DOM.discoverListContainer.appendChild(li);
+    });
+  }
+
+  async function verifySuggestedFeed(feedUrl) {
+    const badgeId = `status-badge-${btoa(feedUrl).replace(/=/g, '').substring(0, 24)}`;
+    const badge = document.getElementById(badgeId);
+    if (!badge) return;
+
+    badge.className = 'discover-status-badge unchecked';
+    badge.textContent = 'Verificando...';
+
+    try {
+      const xmlText = await fetchFeedWithFallback(feedUrl);
+      // Validar si parsea correctamente
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(xmlText, 'text/xml');
+      const parseError = doc.querySelector('parsererror');
+      if (parseError) throw new Error('Error parseo');
+
+      badge.className = 'discover-status-badge valid';
+      badge.textContent = 'Válido ✓';
+    } catch (err) {
+      console.warn('Error al verificar feed:', feedUrl, err);
+      badge.className = 'discover-status-badge invalid';
+      badge.textContent = 'No disponible ✗';
+    }
+  }
+
+  async function subscribeSuggestedFeed(item) {
+    if (state.feeds.some(f => f.url === item.url)) return;
+
+    const nuevoFeed = {
+      url: item.url,
+      nombre: item.nombre,
+      categoria: item.categoria,
+      lang: item.lang || 'es'
+    };
+
+    state.feeds.push(nuevoFeed);
+    saveFeedsToStorage();
+    renderFeeds();
+    renderDiscover(); // Recargar discover para deshabilitar botón
+    updateCategoriesDatalist();
+
+    // Sincronizar de inmediato
+    await syncFeed(nuevoFeed);
+  }
+
 
   // --- EJECUCIÓN INICIAL ---
   initDate();

@@ -20,7 +20,6 @@ document.addEventListener('DOMContentLoaded', () => {
     theme: 'light',
     suggestions: [],
     activeTab: 'portada-ai',
-    geminiApiKey: '',
     activeTagFilter: 'all',
     portadaAiContent: null
   };
@@ -66,16 +65,16 @@ document.addEventListener('DOMContentLoaded', () => {
     tabQuioscoBtn: document.getElementById('tab-quiosco-btn'),
     viewPortadaAi: document.getElementById('view-portada-ai'),
     viewQuiosco: document.getElementById('view-quiosco'),
-    geminiKeyInput: document.getElementById('gemini-key-input'),
-    saveGeminiKeyBtn: document.getElementById('save-gemini-key-btn'),
     generatePortadaBtn: document.getElementById('generate-portada-btn'),
     portadaSectionsContainer: document.getElementById('portada-sections-container'),
     portadaAiEmpty: document.getElementById('portada-ai-empty'),
     portadaAiLoading: document.getElementById('portada-ai-loading'),
     portadaAiContent: document.getElementById('portada-ai-content'),
-    portadaNoKeyWarning: document.getElementById('portada-no-key-warning'),
     quioscoTagFilters: document.getElementById('quiosco-tag-filters'),
-    readerBackdrop: document.getElementById('reader-backdrop')
+    readerBackdrop: document.getElementById('reader-backdrop'),
+    // Badge de usuario autenticado
+    userAvatar: document.getElementById('user-avatar'),
+    userName: document.getElementById('user-name')
   };
 
   // --- AYUDANTES DE SEGURIDAD (sanitización de salida) ---
@@ -145,25 +144,25 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- LÓGICA DE INICIALIZACIÓN (Sin contraseña, persistencia directa en localStorage) ---
 
   async function initData() {
-    // 1. Cargar clave API de Gemini
-    const savedKey = localStorage.getItem('chronos-gemini-key');
-    if (savedKey && !savedKey.includes(':')) {
-      state.geminiApiKey = savedKey;
-      DOM.geminiKeyInput.value = savedKey;
-    } else {
-      // Si la clave anterior estaba encriptada o no encriptada en otra variable, intentar recuperarla
-      const rawKey = localStorage.getItem('chronos-gemini-key-unencrypted');
-      if (rawKey && !rawKey.includes(':')) {
-        state.geminiApiKey = rawKey;
-        DOM.geminiKeyInput.value = rawKey;
-        localStorage.setItem('chronos-gemini-key', rawKey);
+    // 1. Verificar sesión con el servidor — si no hay sesión, redirigir al login
+    try {
+      const authRes = await fetch('/api/auth/me');
+      if (!authRes.ok) {
+        window.location.href = '/login';
+        return;
       }
-      
-      // Limpiar claves antiguas e innecesarias
-      localStorage.removeItem('chronos-gemini-key-unencrypted');
-      localStorage.removeItem('chronos-verifier');
-      localStorage.removeItem('chronos-salt');
-      sessionStorage.removeItem('chronos-session-key');
+      const user = await authRes.json();
+
+      // Mostrar badge de usuario en la sidebar
+      if (DOM.userName) DOM.userName.textContent = user.username;
+      if (DOM.userAvatar) {
+        DOM.userAvatar.src = `https://github.com/${user.username}.png?size=56`;
+        DOM.userAvatar.classList.remove('hidden');
+      }
+    } catch (err) {
+      console.error('Error verificando sesión:', err);
+      window.location.href = '/login';
+      return;
     }
 
     // 2. Cargar feeds
@@ -172,15 +171,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (rawFeeds) {
       try {
         loadedFeeds = JSON.parse(rawFeeds);
-        if (!Array.isArray(loadedFeeds)) {
-          loadedFeeds = null;
-        }
+        if (!Array.isArray(loadedFeeds)) loadedFeeds = null;
       } catch (e) {
-        console.warn('Feeds corruptos o encriptados, se cargarán por defecto.', e);
+        console.warn('Feeds no válidos, cargando por defecto.', e);
         loadedFeeds = null;
       }
     }
-
     if (loadedFeeds) {
       state.feeds = loadedFeeds;
     } else {
@@ -192,18 +188,16 @@ document.addEventListener('DOMContentLoaded', () => {
     if (rawArticles) {
       try {
         state.articles = JSON.parse(rawArticles);
-        if (!Array.isArray(state.articles)) {
-          state.articles = [];
-        }
+        if (!Array.isArray(state.articles)) state.articles = [];
       } catch (e) {
-        console.warn('Artículos corruptos o encriptados, inicializando vacío.', e);
+        console.warn('Artículos no válidos, inicializando vacío.', e);
         state.articles = [];
       }
     } else {
       state.articles = [];
     }
 
-    // 4. Cargar caché de portada
+    // 4. Cargar caché de portada de sesión
     const cachedPortada = sessionStorage.getItem('portada-ai-cache');
     if (cachedPortada) {
       try {
@@ -1077,17 +1071,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function renderPortadaAi() {
-    // Verificar si hay clave
-    if (!state.geminiApiKey) {
-      DOM.portadaAiEmpty.classList.remove('hidden');
-      DOM.portadaAiLoading.classList.add('hidden');
-      DOM.portadaAiContent.classList.add('hidden');
-      DOM.portadaNoKeyWarning.classList.remove('hidden');
-      return;
-    } else {
-      DOM.portadaNoKeyWarning.classList.add('hidden');
-    }
-
     if (state.portadaAiContent) {
       DOM.portadaAiEmpty.classList.add('hidden');
       DOM.portadaAiLoading.classList.add('hidden');
@@ -1146,11 +1129,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  async function saveGeminiKeyToStorage(key) {
-    state.geminiApiKey = key;
-    localStorage.setItem('chronos-gemini-key', key);
-  }
-
   // --- GESTIÓN DE EVENTOS (LISTENERS) ---
 
   // Conmutador de Tabs Principales
@@ -1160,27 +1138,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Cerrar lector haciendo clic fuera
   DOM.readerBackdrop.addEventListener('click', closeArticleReader);
 
-  // Guardar clave API de Gemini
-  DOM.saveGeminiKeyBtn.addEventListener('click', async () => {
-    const key = DOM.geminiKeyInput.value.trim();
-    if (!key) {
-      toast('Por favor, introduce una clave API válida.');
-      return;
-    }
-    await saveGeminiKeyToStorage(key);
-    toast('✓ Clave API de Gemini guardada.');
-    if (state.activeTab === 'portada-ai') {
-      renderPortadaAi();
-    }
-  });
-
   // Generar Portada AI
   DOM.generatePortadaBtn.addEventListener('click', async () => {
-    if (!state.geminiApiKey) {
-      DOM.portadaNoKeyWarning.classList.remove('hidden');
-      return;
-    }
-    
     // Recolectar noticias recientes (últimas 48 horas o últimas 30)
     const todayArticles = state.articles.filter(art => {
       return (Date.now() - new Date(art.date).getTime()) < 48 * 60 * 60 * 1000;
@@ -1226,15 +1185,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const userPrompt = `Aquí tienes las noticias de hoy:\n${articlesListText}\n\nPor favor, genera la portada en formato JSON según las instrucciones.`;
 
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${state.geminiApiKey}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
+      const res = await fetch('/api/gemini', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: systemPrompt + "\n\n" + userPrompt }] }]
+          contents: [{ parts: [{ text: systemPrompt + '\n\n' + userPrompt }] }]
         })
       });
 
-      if (!res.ok) throw new Error(`Google API HTTP ${res.status}`);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP ${res.status}`);
+      }
 
       const resData = await res.json();
       const text = resData?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";

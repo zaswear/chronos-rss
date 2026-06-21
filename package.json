@@ -1,0 +1,9 @@
+{
+  "name": "chronos-rss",
+  "version": "1.0.0",
+  "description": "Lector RSS personal con portada AI generada por Gemini",
+  "engines": {
+    "node": "24.x"
+  },
+  "private": true
+}

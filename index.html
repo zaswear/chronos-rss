@@ -129,13 +129,16 @@
       </div>
     </div>
 
-    <!-- AJUSTES DE API DE GEMINI -->
-    <div class="p-4 border-t-2 border-border-ink bg-sidebar/50 flex-shrink-0">
-      <h3 class="font-serif text-[10px] font-extrabold mb-2 text-ink uppercase tracking-wider">🤖 CONFIGURACIÓN IA</h3>
-      <div class="space-y-2">
-        <input type="password" id="gemini-key-input" placeholder="API Key de Gemini" class="w-full text-xs px-2.5 py-1.5 bg-paper border border-border-ink text-ink placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-accent-terracotta" />
-        <button id="save-gemini-key-btn" class="btn-small text-[10px] w-full font-bold py-1">Guardar Clave</button>
+    <!-- USUARIO AUTENTICADO -->
+    <div class="p-4 border-t-2 border-border-ink bg-sidebar/50 flex-shrink-0 flex items-center justify-between gap-3" id="user-badge-section">
+      <div class="flex items-center gap-2 min-w-0">
+        <img id="user-avatar" src="" alt="Avatar" class="w-7 h-7 rounded-full border border-border-muted hidden" />
+        <span id="user-name" class="text-xs font-mono text-muted truncate"></span>
       </div>
+      <a href="/api/auth/logout" class="btn-text text-[10px] font-mono shrink-0 flex items-center gap-1 text-muted hover:text-accent-terracotta transition-colors" title="Cerrar sesión">
+        <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        Salir
+      </a>
     </div>
   </aside>
 
@@ -184,11 +187,6 @@
             <div class="text-4xl">📰</div>
             <h3 class="serif-text text-xl font-bold">Tu Diario AI Personal</h3>
             <p class="text-xs text-muted max-w-md">Gemini procesará todos los artículos del día recopilados de tus fuentes y redactará una portada de periódico real en español, organizada por secciones temáticas.</p>
-            
-            <div id="portada-no-key-warning" class="text-xs text-accent-terracotta font-semibold hidden">
-              ⚠️ Introduce y guarda tu clave API de Gemini en la barra lateral izquierda para generar la portada.
-            </div>
-            
             <button id="generate-portada-btn" class="btn-primary flex items-center gap-2 px-6 py-2.5 font-bold">
               <span>Generar Portada AI del Día</span>
             </button>

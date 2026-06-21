@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chronos RSS · Acceso</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;0,700;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-paper: #faf8f3;
+      --bg-card: #f2ede3;
+      --text-ink: #1a1208;
+      --text-muted: #6b5e4a;
+      --border-ink: #2d2416;
+      --border-muted: #c8b99a;
+      --accent-terracotta: #c0392b;
+      --font-serif: 'Lora', Georgia, serif;
+      --font-sans: 'Plus Jakarta Sans', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+    [data-theme="dark"] {
+      --bg-paper: #15120a;
+      --bg-card: #1e1a10;
+      --text-ink: #f0e8d8;
+      --text-muted: #9e8f78;
+      --border-ink: #c8b99a;
+      --border-muted: #3d3525;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background-color: var(--bg-paper);
+      color: var(--text-ink);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Textura de fondo tipo papel de periódico */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 28px,
+        var(--border-muted) 28px,
+        var(--border-muted) 29px
+      );
+      opacity: 0.12;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .login-container {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      max-width: 440px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2.5rem;
+    }
+
+    /* Cabecera del periódico */
+    .masthead {
+      text-align: center;
+      border-top: 3px solid var(--border-ink);
+      border-bottom: 3px solid var(--border-ink);
+      padding: 1.25rem 0;
+      width: 100%;
+    }
+    .masthead-eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.6rem;
+      letter-spacing: 0.3em;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      margin-bottom: 0.5rem;
+    }
+    .masthead-title {
+      font-family: var(--font-serif);
+      font-size: clamp(2rem, 8vw, 3rem);
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      line-height: 1;
+      color: var(--text-ink);
+    }
+    .masthead-tagline {
+      font-family: var(--font-serif);
+      font-style: italic;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 0.4rem;
+    }
+
+    /* Tarjeta de login */
+    .login-card {
+      width: 100%;
+      background: var(--bg-card);
+      border: 2px solid var(--border-ink);
+      padding: 2rem;
+      box-shadow: 4px 4px 0 0 var(--border-ink);
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .login-card-header {
+      text-align: center;
+    }
+    .login-card-title {
+      font-family: var(--font-serif);
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text-ink);
+      margin-bottom: 0.4rem;
+    }
+    .login-card-subtitle {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    .divider {
+      border: none;
+      border-top: 1px dashed var(--border-muted);
+    }
+
+    /* Botón de GitHub */
+    .btn-github {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      width: 100%;
+      padding: 0.85rem 1.5rem;
+      background: var(--text-ink);
+      color: var(--bg-paper);
+      font-family: var(--font-sans);
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      text-decoration: none;
+      border: 2px solid var(--border-ink);
+      cursor: pointer;
+      transition: transform 0.1s ease, box-shadow 0.1s ease;
+      box-shadow: 2px 2px 0 0 var(--accent-terracotta);
+    }
+    .btn-github:hover {
+      transform: translate(-1px, -1px);
+      box-shadow: 3px 3px 0 0 var(--accent-terracotta);
+    }
+    .btn-github:active {
+      transform: translate(1px, 1px);
+      box-shadow: 1px 1px 0 0 var(--accent-terracotta);
+    }
+    .btn-github svg {
+      width: 1.1rem;
+      height: 1.1rem;
+      fill: currentColor;
+      flex-shrink: 0;
+    }
+
+    .login-note {
+      font-family: var(--font-mono);
+      font-size: 0.6rem;
+      color: var(--text-muted);
+      text-align: center;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      line-height: 1.6;
+    }
+
+    /* Pie de página */
+    .login-footer {
+      font-family: var(--font-mono);
+      font-size: 0.6rem;
+      color: var(--text-muted);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    /* Animación de entrada */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .login-container { animation: fadeUp 0.5s ease both; }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+
+    <div class="masthead">
+      <p class="masthead-eyebrow">Archivo personal · Acceso privado</p>
+      <h1 class="masthead-title">CHRONOS RSS</h1>
+      <p class="masthead-tagline">"Reduciendo el ruido mental, destilando el tiempo"</p>
+    </div>
+
+    <div class="login-card">
+      <div class="login-card-header">
+        <p class="login-card-title">Área restringida</p>
+        <p class="login-card-subtitle">
+          Esta publicación es de uso privado.<br>
+          Identifícate con tu cuenta de GitHub para continuar.
+        </p>
+      </div>
+
+      <hr class="divider" />
+
+      <a href="/api/auth/github" class="btn-github" id="login-btn">
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+        </svg>
+        Entrar con GitHub
+      </a>
+
+      <p class="login-note">
+        Solo la cuenta autorizada puede acceder.<br>
+        No se almacenan datos en ningún servidor externo.
+      </p>
+    </div>
+
+    <p class="login-footer">Chronos RSS · Edición Privada</p>
+  </div>
+
+  <script>
+    // Detectar preferencia de tema del sistema
+    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+    // O usar el tema guardado
+    const savedTheme = localStorage.getItem('chronos-theme');
+    if (savedTheme) {
+      document.documentElement.setAttribute('data-theme', savedTheme);
+    }
+  </script>
+</body>
+</html>

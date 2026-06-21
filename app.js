@@ -18,7 +18,6 @@ document.addEventListener('DOMContentLoaded', () => {
     activeArticleId: null,
     searchQuery: '',
     theme: 'light',
-    password: null,      // Clave de descifrado en sesión
     suggestions: [],
     activeTab: 'portada-ai',
     geminiApiKey: '',
@@ -1227,15 +1226,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const userPrompt = `Aquí tienes las noticias de hoy:\n${articlesListText}\n\nPor favor, genera la portada en formato JSON según las instrucciones.`;
 
-      const res = await fetch(\`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=\${state.geminiApiKey}\`, {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${state.geminiApiKey}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: systemPrompt + "\\n\\n" + userPrompt }] }]
+          contents: [{ parts: [{ text: systemPrompt + "\n\n" + userPrompt }] }]
         })
       });
 
-      if (!res.ok) throw new Error(\`Google API HTTP \${res.status}\`);
+      if (!res.ok) throw new Error(`Google API HTTP ${res.status}`);
 
       const resData = await res.json();
       const text = resData?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";

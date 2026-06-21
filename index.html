@@ -11,6 +11,36 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;0,700;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500&display=swap" rel="stylesheet" />
 
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: ['class', '[data-theme="dark"]'],
+      theme: {
+        extend: {
+          colors: {
+            paper: 'var(--bg-paper)',
+            sidebar: 'var(--bg-sidebar)',
+            ink: 'var(--text-ink)',
+            muted: 'var(--text-muted)',
+            'border-ink': 'var(--border-ink)',
+            'border-muted': 'var(--border-muted)',
+            'accent-purple': 'var(--accent-purple)',
+            'accent-terracotta': 'var(--accent-terracotta)',
+            'card-bg': 'var(--bg-card)',
+          },
+          fontFamily: {
+            serif: ['Lora', 'Georgia', 'serif'],
+            sans: ['Plus Jakarta Sans', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          boxShadow: {
+            editorial: '4px 4px 0px 0px var(--border-ink)',
+          }
+        }
+      }
+    }
+  </script>
 
   <!-- Custom Stylesheet -->
   <link rel="stylesheet" href="style.css" />
@@ -18,184 +48,270 @@
   <!-- Sanitización de HTML de feeds (vendorizado · Cure53 DOMPurify) -->
   <script src="purify.min.js" defer></script>
 </head>
-<body>
+<body class="bg-paper text-ink font-sans h-screen overflow-hidden flex flex-col md:flex-row relative">
 
-  <!-- Cabecera Editorial Principal -->
-  <header class="editorial-header">
-    <div class="header-top">
-      <span class="header-meta mono-text">EDICIÓN DIARIA · VOL. I</span>
-      <h1 class="header-logo serif-text">CHRONOS RSS</h1>
-      <div class="header-actions">
-        <button id="theme-toggle-btn" class="icon-btn" aria-label="Cambiar tema" title="Alternar tema claro/oscuro">
-          <!-- Sol / Luna SVG -->
-          <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
-          <svg class="moon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
-        </button>
-      </div>
+  <!-- CAPA DE BACKDROP PARA EL LECTOR SLIDE-OVER -->
+  <div id="reader-backdrop" class="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 hidden opacity-0 transition-opacity duration-300"></div>
+
+  <!-- COLUMNA 1: Suscripciones y Gestión (Sidebar) -->
+  <aside class="pane pane-sidebar w-full md:w-80 border-r-2 border-border-ink bg-sidebar flex flex-col flex-shrink-0 h-full overflow-hidden" id="pane-subscriptions">
+    <!-- Cabecera del panel de suscripciones -->
+    <div class="p-4 border-b border-border-muted flex justify-between items-center flex-shrink-0 height-[57px]">
+      <h2 class="serif-text font-bold text-lg">Fuentes</h2>
+      <button id="add-feed-trigger" class="btn-small py-1 text-xs" title="Añadir Feed">
+        <svg class="w-3.5 h-3.5 inline-block mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        <span>Añadir</span>
+      </button>
     </div>
-    <div class="header-divider"></div>
-    <div class="header-bottom">
-      <span class="header-date mono-text" id="current-date-display">20 de Junio, 2026</span>
-      <span class="header-tagline serif-text">"Reduciendo el ruido mental, destilando el tiempo"</span>
-      <span class="header-status mono-text" id="status-indicator" role="status" aria-live="polite">Sincronizado</span>
+
+    <!-- Tabs de Barra Lateral -->
+    <div class="sidebar-tabs flex-shrink-0 flex border-b border-border-muted">
+      <button id="sidebar-tab-my" class="sidebar-tab-btn active flex-1 text-center py-2 text-xs font-bold">Mis Fuentes</button>
+      <button id="sidebar-tab-discover" class="sidebar-tab-btn flex-1 text-center py-2 text-xs font-bold">Descubrir</button>
     </div>
-  </header>
 
-  <!-- Contenedor Principal (Layout de Tres Columnas) -->
-  <main class="app-layout" id="main-container">
+    <!-- CONTENEDOR 1: Mis Fuentes -->
+    <div class="sidebar-view-wrapper flex-1 overflow-hidden flex flex-col" id="my-feeds-wrapper">
+      <!-- Filtros Rápidos de Categorías -->
+      <nav class="category-nav flex gap-1.5 p-3 overflow-x-auto border-b border-border-muted flex-shrink-0" id="category-filters">
+        <button class="cat-chip active text-xs px-2.5 py-1" data-category="all">Todos</button>
+        <button class="cat-chip text-xs px-2.5 py-1" data-category="unread">Sin Leer</button>
+        <button class="cat-chip text-xs px-2.5 py-1" data-category="starred">Guardados</button>
+      </nav>
 
-    <!-- COLUMNA 1: Suscripciones y Gestión -->
-    <section class="pane pane-sidebar" id="pane-subscriptions">
-      <div class="pane-title">
-        <h2 class="serif-text">Suscripciones</h2>
-        <button id="add-feed-trigger" class="btn-small" title="Añadir Feed">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-          <span>Añadir</span>
-        </button>
-      </div>
-
-      <!-- Tabs de Barra Lateral -->
-      <div class="sidebar-tabs">
-        <button id="sidebar-tab-my" class="sidebar-tab-btn active">Mis Fuentes</button>
-        <button id="sidebar-tab-discover" class="sidebar-tab-btn">Descubrir</button>
-      </div>
-
-      <!-- CONTENEDOR 1: Mis Fuentes -->
-      <div class="sidebar-view-wrapper" id="my-feeds-wrapper">
-        <!-- Filtros Rápidos de Categorías -->
-        <nav class="category-nav" id="category-filters">
-          <button class="cat-chip active" data-category="all">Todos</button>
-          <button class="cat-chip" data-category="unread">Sin Leer</button>
-          <button class="cat-chip" data-category="starred">Guardados</button>
-        </nav>
-
-        <!-- Lista de Feeds Suscritos -->
-        <div class="scroll-container custom-scrollbar" style="padding-top: 0.5rem;">
-          <ul class="feed-list" id="feed-list-container">
-            <!-- Cargado dinámicamente -->
-          </ul>
-        </div>
-      </div>
-
-      <!-- CONTENEDOR 2: Descubrir / Sugerencias -->
-      <div class="sidebar-view-wrapper hidden" id="discover-feeds-wrapper">
-        <div class="discover-actions-bar">
-          <span class="discover-subtitle mono-text">FUENTES SUGERIDAS</span>
-          <button id="reload-discover-btn" class="btn-text btn-icon" title="Cargar otras sugerencias">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
-            <span>Recargar</span>
-          </button>
-        </div>
-        <div class="scroll-container custom-scrollbar" style="padding-top: 0.5rem;">
-          <ul class="discover-list" id="discover-list-container">
-            <!-- Cargado dinámicamente -->
-          </ul>
-        </div>
-      </div>
-
-      <!-- Formulario Flotante/Oculto para Añadir Feeds -->
-      <div class="add-feed-popover hidden" id="add-feed-popover">
-        <div class="popover-content">
-          <h3 class="serif-text">Nuevo Feed RSS</h3>
-          <form id="add-feed-form">
-            <div class="form-group">
-              <label for="feed-url-input">Dirección URL del Feed</label>
-              <input type="url" id="feed-url-input" placeholder="https://ejemplo.com/rss" required />
-            </div>
-            <div class="form-group">
-              <label for="feed-name-input">Nombre Personalizado (Opcional)</label>
-              <input type="text" id="feed-name-input" placeholder="Mi blog favorito" />
-            </div>
-            <div class="form-group">
-              <label for="feed-cat-input">Categoría</label>
-              <input type="text" id="feed-cat-input" placeholder="Tecnología" list="categories-datalist" />
-              <datalist id="categories-datalist"></datalist>
-            </div>
-            <div class="form-actions">
-              <button type="button" id="add-feed-cancel" class="btn-text">Cancelar</button>
-              <button type="submit" class="btn-primary">Suscribirse</button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </section>
-
-    <!-- COLUMNA 2: Lista de Artículos -->
-    <section class="pane pane-articles" id="pane-articles-list">
-      <div class="pane-title">
-        <div class="search-wrapper">
-          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-          <input type="search" id="search-input" placeholder="Buscar en titulares o fuentes..." aria-label="Buscar artículos" />
-        </div>
-      </div>
-
-      <div class="articles-actions-bar">
-        <span class="articles-count mono-text" id="articles-count-text">Cargando artículos...</span>
-        <button id="mark-all-read-btn" class="btn-text btn-icon" title="Marcar todos como leídos">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
-          <span>Leídos</span>
-        </button>
-      </div>
-
-      <!-- Contenedor del listado de artículos -->
-      <div class="scroll-container custom-scrollbar" id="articles-scroll-container">
-        <div class="articles-grid" id="articles-container">
+      <!-- Lista de Feeds Suscritos -->
+      <div class="flex-1 overflow-y-auto custom-scrollbar p-2">
+        <ul class="feed-list space-y-1" id="feed-list-container">
           <!-- Cargado dinámicamente -->
-        </div>
+        </ul>
       </div>
-    </section>
+    </div>
 
-    <!-- COLUMNA 3: Lector Detallado -->
-    <section class="pane pane-reader" id="pane-article-reader">
-      <div class="reader-header-actions">
-        <button id="close-reader-btn" class="icon-btn mobile-only" aria-label="Volver al listado">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+    <!-- CONTENEDOR 2: Descubrir / Sugerencias -->
+    <div class="sidebar-view-wrapper flex-1 overflow-hidden flex flex-col hidden" id="discover-feeds-wrapper">
+      <div class="discover-actions-bar flex justify-between items-center p-3 border-b border-border-muted flex-shrink-0">
+        <span class="discover-subtitle text-[10px] font-mono text-muted uppercase font-bold">Sugerencias</span>
+        <button id="reload-discover-btn" class="btn-text text-xs flex items-center gap-1" title="Cargar otras sugerencias">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3.5 h-3.5"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+          <span>Recargar</span>
         </button>
-        <div class="reader-tools">
-          <button id="star-article-btn" class="icon-btn" aria-label="Guardar artículo" title="Guardar artículo">
-            <svg class="star-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+      </div>
+      <div class="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3">
+        <ul class="discover-list space-y-3" id="discover-list-container">
+          <!-- Cargado dinámicamente -->
+        </ul>
+      </div>
+    </div>
+
+    <!-- Formulario Popover para Añadir Feeds -->
+    <div class="add-feed-popover hidden" id="add-feed-popover">
+      <div class="popover-content space-y-3">
+        <h3 class="serif-text font-bold text-sm border-b border-border-ink pb-1">Nuevo Feed RSS</h3>
+        <form id="add-feed-form" class="space-y-2">
+          <div class="form-group">
+            <label class="text-[10px] font-bold text-muted uppercase">URL del Feed</label>
+            <input type="url" id="feed-url-input" placeholder="https://ejemplo.com/rss" required class="w-full text-xs px-2 py-1 bg-paper border border-border-muted focus:border-border-ink outline-none" />
+          </div>
+          <div class="form-group">
+            <label class="text-[10px] font-bold text-muted uppercase">Nombre (Opcional)</label>
+            <input type="text" id="feed-name-input" placeholder="Mi blog favorito" class="w-full text-xs px-2 py-1 bg-paper border border-border-muted focus:border-border-ink outline-none" />
+          </div>
+          <div class="form-group">
+            <label class="text-[10px] font-bold text-muted uppercase">Categoría</label>
+            <input type="text" id="feed-cat-input" placeholder="Tecnología" list="categories-datalist" class="w-full text-xs px-2 py-1 bg-paper border border-border-muted focus:border-border-ink outline-none" />
+            <datalist id="categories-datalist"></datalist>
+          </div>
+          <div class="form-actions flex justify-end gap-2 pt-2">
+            <button type="button" id="add-feed-cancel" class="btn-text text-xs">Cancelar</button>
+            <button type="submit" class="btn-primary text-xs px-3 py-1">Suscribirse</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- AJUSTES DE API DE GEMINI -->
+    <div class="p-4 border-t-2 border-border-ink bg-sidebar/50 flex-shrink-0">
+      <h3 class="font-serif text-[10px] font-extrabold mb-2 text-ink uppercase tracking-wider">🤖 CONFIGURACIÓN IA</h3>
+      <div class="space-y-2">
+        <input type="password" id="gemini-key-input" placeholder="API Key de Gemini" class="w-full text-xs px-2.5 py-1.5 bg-paper border border-border-ink text-ink placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-accent-terracotta" />
+        <button id="save-gemini-key-btn" class="btn-small text-[10px] w-full font-bold py-1">Guardar Clave</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- SECCIÓN CENTRAL Y DERECHA: Portada o Quiosco (Pane de Artículos unificado) -->
+  <main class="pane pane-articles flex-1 flex flex-col overflow-hidden h-full active-pane" id="pane-articles-list">
+
+    <!-- Cabecera Editorial Principal -->
+    <header class="editorial-header flex-shrink-0">
+      <div class="header-top">
+        <span class="header-meta mono-text">EDICIÓN DIARIA · VOL. I</span>
+        <h1 class="header-logo serif-text font-bold">CHRONOS RSS</h1>
+        <div class="header-actions">
+          <button id="theme-toggle-btn" class="icon-btn" aria-label="Cambiar tema" title="Alternar tema claro/oscuro">
+            <svg class="sun-icon w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+            <svg class="moon-icon w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
           </button>
-          <button id="share-article-btn" class="icon-btn" aria-label="Compartir" title="Copiar enlace">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
-          </button>
-          <a id="external-link-btn" href="#" target="_blank" rel="noopener" class="icon-btn" aria-label="Ver original" title="Abrir web original">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
-          </a>
         </div>
       </div>
+      <div class="header-divider"></div>
+      <div class="header-bottom">
+        <span class="header-date mono-text" id="current-date-display">20 de Junio, 2026</span>
+        <span class="header-tagline serif-text">"Reduciendo el ruido mental, destilando el tiempo"</span>
+        <span class="header-status mono-text" id="status-indicator" role="status" aria-live="polite">Sincronizado</span>
+      </div>
+    </header>
 
-      <!-- Contenedor del lector -->
-      <div class="scroll-container custom-scrollbar reader-body" id="reader-content-scroll">
-        <article class="focused-article" id="focused-article-wrapper">
-          <!-- Vista por defecto si no hay artículo seleccionado -->
-          <div class="reader-placeholder">
-            <div class="placeholder-crest serif-text">⚔</div>
-            <h2 class="serif-text">El arte de la lectura pausada</h2>
-            <p>Chronos RSS filtra el ruido de los titulares redundantes y agrupa tus fuentes favoritas.</p>
-            <div class="shortcut-legend mono-text">
-              <p><strong>Navegación:</strong></p>
-              <ul>
-                <li><span class="key">J</span> / <span class="key">K</span> : Siguiente / Anterior artículo</li>
-                <li><span class="key">S</span> : Guardar en favoritos</li>
-                <li><span class="key">O</span> : Abrir enlace original</li>
-                <li><span class="key">Esc</span> : Cerrar artículo</li>
-              </ul>
+    <!-- NAVEGACIÓN POR PESTAÑAS (TABS) -->
+    <div class="flex border-y border-border-ink bg-sidebar/50 text-xs font-serif flex-shrink-0">
+      <button id="tab-portada-btn" class="flex-1 py-2.5 text-center font-bold border-r border-border-ink hover:bg-paper transition-all duration-200 focus:outline-none tracking-widest text-accent-terracotta border-b-2 border-b-accent-terracotta" data-tab="portada-ai">
+        📰 MI PORTADA AI
+      </button>
+      <button id="tab-quiosco-btn" class="flex-1 py-2.5 text-center font-bold hover:bg-paper transition-all duration-200 focus:outline-none tracking-widest text-muted border-b-2 border-b-transparent" data-tab="quiosco">
+        🏛️ EL QUIOSCO
+      </button>
+    </div>
+
+    <!-- CONTENEDOR DE VISTAS CONMUTABLES -->
+    <div class="flex-1 overflow-hidden relative">
+
+      <!-- VISTA 1: MI PORTADA AI -->
+      <div id="view-portada-ai" class="absolute inset-0 overflow-y-auto p-4 md:p-8 space-y-6 custom-scrollbar flex flex-col">
+        <!-- Presentación de la Portada AI -->
+        <div id="portada-ai-wrapper" class="flex-grow flex flex-col gap-6 max-w-5xl mx-auto w-full">
+          <!-- Portada no generada o sin clave -->
+          <div id="portada-ai-empty" class="flex-grow flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-border-muted bg-sidebar/10 space-y-4 my-auto min-h-[300px]">
+            <div class="text-4xl">📰</div>
+            <h3 class="serif-text text-xl font-bold">Tu Diario AI Personal</h3>
+            <p class="text-xs text-muted max-w-md">Gemini procesará todos los artículos del día recopilados de tus fuentes y redactará una portada de periódico real en español, organizada por secciones temáticas.</p>
+            
+            <div id="portada-no-key-warning" class="text-xs text-accent-terracotta font-semibold hidden">
+              ⚠️ Introduce y guarda tu clave API de Gemini en la barra lateral izquierda para generar la portada.
+            </div>
+            
+            <button id="generate-portada-btn" class="btn-primary flex items-center gap-2 px-6 py-2.5 font-bold">
+              <span>Generar Portada AI del Día</span>
+            </button>
+          </div>
+
+          <!-- Portada Generando Loader -->
+          <div id="portada-ai-loading" class="flex-grow flex flex-col items-center justify-center text-center p-8 space-y-4 my-auto min-h-[300px] hidden">
+            <div class="editorial-spinner my-4"></div>
+            <h3 class="serif-text text-lg font-bold animate-pulse">Imprimiendo la portada del día...</h3>
+            <p class="text-xs text-muted animate-pulse">Nuestros editores automáticos están resumiendo e integrando tus noticias de hoy.</p>
+          </div>
+
+          <!-- Portada AI Content (Newspaper layout) -->
+          <div id="portada-ai-content" class="hidden space-y-6 pb-12">
+            <!-- Título editorial de la portada -->
+            <div class="text-center border-b-2 border-border-ink pb-4 space-y-1">
+              <h2 class="serif-text font-bold text-3xl md:text-4xl tracking-tight">EL CRONISTA DIGITAL</h2>
+              <p class="text-[10px] mono-text text-muted uppercase tracking-wider">RESUMEN DIARIO DE LA ACTUALIDAD TECNOLÓGICA REDACTADO POR IA</p>
+            </div>
+            
+            <!-- Cuerpo del periódico (Secciones inyectadas dinámicamente) -->
+            <div id="portada-sections-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 divide-y md:divide-y-0 md:divide-x divide-border-muted">
+              <!-- Cargado dinámicamente -->
             </div>
           </div>
-        </article>
+        </div>
       </div>
-    </section>
+
+      <!-- VISTA 2: EL QUIOSCO (Bento Grid Feed) -->
+      <div id="view-quiosco" class="absolute inset-0 flex flex-col overflow-hidden hidden">
+        <!-- Cabecera de Quiosco (Filtros y Búsqueda) -->
+        <div class="flex-shrink-0 border-b border-border-muted p-4 bg-sidebar/20 flex flex-col sm:flex-row gap-3 items-center justify-between">
+          <!-- Filtros de tags -->
+          <div class="flex gap-2 flex-wrap" id="quiosco-tag-filters">
+            <button class="cat-chip active text-xs px-3 py-1 font-bold" data-tag="all">Todo</button>
+            <button class="cat-chip text-xs px-3 py-1 font-bold" data-tag="ia">IA / Algoritmos</button>
+            <button class="cat-chip text-xs px-3 py-1 font-bold" data-tag="dev">Desarrollo / Dev</button>
+            <button class="cat-chip text-xs px-3 py-1 font-bold" data-tag="diseno">Diseño / UI-UX</button>
+            <button class="cat-chip text-xs px-3 py-1 font-bold" data-tag="otros">Otros</button>
+          </div>
+
+          <!-- Buscador y conteo -->
+          <div class="flex items-center gap-3 w-full sm:w-auto">
+            <div class="search-wrapper flex-1 sm:w-64">
+              <svg class="search-icon w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input type="search" id="search-input" placeholder="Buscar titulares o fuentes..." aria-label="Buscar artículos" />
+            </div>
+            
+            <button id="mark-all-read-btn" class="btn-text text-xs shrink-0 flex items-center gap-1" title="Marcar todos como leídos">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span>Marcar Leídos</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Acciones bar con conteo -->
+        <div class="articles-actions-bar px-4 py-2 border-b border-border-muted flex justify-between items-center bg-sidebar/10 flex-shrink-0">
+          <span class="articles-count text-[10px] font-mono text-muted uppercase font-bold" id="articles-count-text">Cargando artículos...</span>
+        </div>
+
+        <!-- Contenedor del listado de artículos (Bento Grid) -->
+        <div class="flex-1 overflow-y-auto custom-scrollbar p-6" id="articles-scroll-container">
+          <div id="articles-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <!-- Cargado dinámicamente -->
+          </div>
+        </div>
+      </div>
+
+    </div>
 
   </main>
 
+  <!-- COLUMNA 3: Lector Detallado (Slide-over) -->
+  <section class="pane pane-reader fixed inset-y-0 right-0 z-50 w-full max-w-2xl bg-paper border-l-2 border-border-ink transform translate-x-full transition-transform duration-300 ease-in-out flex flex-col shadow-2xl" id="pane-article-reader">
+    <!-- Acciones en el lector -->
+    <div class="reader-header-actions p-4 border-b border-border-muted flex justify-between items-center flex-shrink-0">
+      <button id="close-reader-btn" class="btn-text text-xs" aria-label="Cerrar lector">
+        <svg class="w-4 h-4 mr-1 inline-block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+        <span>Volver</span>
+      </button>
+      <div class="reader-tools flex gap-1.5">
+        <button id="star-article-btn" class="icon-btn" aria-label="Guardar artículo" title="Guardar artículo">
+          <svg class="star-icon w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+        </button>
+        <button id="share-article-btn" class="icon-btn" aria-label="Compartir" title="Copiar enlace">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+        </button>
+        <a id="external-link-btn" href="#" target="_blank" rel="noopener" class="icon-btn" aria-label="Ver original" title="Abrir web original">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+        </a>
+      </div>
+    </div>
+
+    <!-- Contenedor del lector -->
+    <div class="flex-grow overflow-y-auto custom-scrollbar reader-body p-6 md:p-8" id="reader-content-scroll">
+      <article class="focused-article" id="focused-article-wrapper">
+        <!-- Vista por defecto si no hay artículo seleccionado -->
+        <div class="reader-placeholder text-center p-8 space-y-4">
+          <div class="placeholder-crest serif-text text-3xl">⚔</div>
+          <h2 class="serif-text text-xl font-bold">El arte de la lectura pausada</h2>
+          <p class="text-xs text-muted max-w-sm mx-auto">Chronos RSS filtra el ruido de los titulares redundantes y agrupa tus fuentes favoritas.</p>
+          <div class="shortcut-legend text-xs border border-border-muted p-4 bg-sidebar/35 text-left max-w-sm mx-auto space-y-2">
+            <p class="font-bold">Navegación por teclado:</p>
+            <ul class="space-y-1 font-mono text-[10px] text-muted">
+              <li><span class="key text-[9px] px-1 py-0.5 border border-border-ink shadow-sm bg-paper mr-1">J</span> / <span class="key text-[9px] px-1 py-0.5 border border-border-ink shadow-sm bg-paper mr-1">K</span> : Siguiente / Anterior</li>
+              <li><span class="key text-[9px] px-1 py-0.5 border border-border-ink shadow-sm bg-paper mr-1">S</span> : Guardar en favoritos</li>
+              <li><span class="key text-[9px] px-1 py-0.5 border border-border-ink shadow-sm bg-paper mr-1">O</span> : Abrir original</li>
+              <li><span class="key text-[9px] px-1 py-0.5 border border-border-ink shadow-sm bg-paper mr-1">Esc</span> : Cerrar lector</li>
+            </ul>
+          </div>
+        </div>
+      </article>
+    </div>
+  </section>
+
   <!-- Navegación Móvil (Pie de página) -->
-  <nav class="mobile-navigation">
+  <nav class="mobile-navigation flex-shrink-0">
     <button class="mobile-nav-item active" data-target="pane-articles-list">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-      <span>Noticias</span>
+      <svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+      <span>Lectura</span>
     </button>
     <button class="mobile-nav-item" data-target="pane-subscriptions">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 11a9 9 0 0 1 9 9"></path><path d="M4 4a16 16 0 0 1 16 16"></path><circle cx="5" cy="19" r="1"></circle></svg>
+      <svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 11a9 9 0 0 1 9 9"></path><path d="M4 4a16 16 0 0 1 16 16"></path><circle cx="5" cy="19" r="1"></circle></svg>
       <span>Fuentes</span>
     </button>
     <button id="mobile-add-feed-btn" class="mobile-nav-item accent">
@@ -205,24 +321,6 @@
       <span>Añadir</span>
     </button>
   </nav>
-
-  <!-- Pantalla de Bloqueo Local (cifrado del vault en este dispositivo) -->
-  <div id="login-overlay" class="login-overlay" role="dialog" aria-modal="true" aria-labelledby="login-title">
-    <div class="login-box">
-      <div class="login-crest serif-text">⚔ CHRONOS ⚔</div>
-      <h2 class="serif-text" id="login-title">Archivo Protegido</h2>
-      <p class="login-tagline">Introduce tu clave para cifrar y descifrar tus feeds e historial en este dispositivo. La primera clave que introduzcas quedará fijada como la del archivo.</p>
-
-      <form id="login-form">
-        <div class="form-group" style="margin-bottom: 0.5rem;">
-          <label for="login-password-input" class="sr-only">Clave del archivo</label>
-          <input type="password" id="login-password-input" placeholder="••••••••" required autofocus autocomplete="current-password" style="text-align: center; font-size: 1.25rem; letter-spacing: 0.25em;" />
-        </div>
-        <div id="login-error-msg" class="login-error hidden" role="alert">Clave de descifrado incorrecta.</div>
-        <button type="submit" class="btn-primary" style="width: 100%; margin-top: 0.75rem;">Desbloquear Archivo</button>
-      </form>
-    </div>
-  </div>
 
   <!-- JavaScript principal -->
   <script src="app.js"></script>

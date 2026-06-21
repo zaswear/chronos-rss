@@ -19,7 +19,11 @@ document.addEventListener('DOMContentLoaded', () => {
     searchQuery: '',
     theme: 'light',
     password: null,      // Clave de descifrado en sesión
-    suggestions: []
+    suggestions: [],
+    activeTab: 'portada-ai',
+    geminiApiKey: '',
+    activeTagFilter: 'all',
+    portadaAiContent: null
   };
 
   // --- SELECTORES DOM ---
@@ -57,10 +61,22 @@ document.addEventListener('DOMContentLoaded', () => {
     discoverFeedsWrapper: document.getElementById('discover-feeds-wrapper'),
     discoverListContainer: document.getElementById('discover-list-container'),
     reloadDiscoverBtn: document.getElementById('reload-discover-btn'),
-    loginOverlay: document.getElementById('login-overlay'),
-    loginForm: document.getElementById('login-form'),
-    loginPasswordInput: document.getElementById('login-password-input'),
-    loginErrorMsg: document.getElementById('login-error-msg'),
+    
+    // Nuevos Selectores
+    tabPortadaBtn: document.getElementById('tab-portada-btn'),
+    tabQuioscoBtn: document.getElementById('tab-quiosco-btn'),
+    viewPortadaAi: document.getElementById('view-portada-ai'),
+    viewQuiosco: document.getElementById('view-quiosco'),
+    geminiKeyInput: document.getElementById('gemini-key-input'),
+    saveGeminiKeyBtn: document.getElementById('save-gemini-key-btn'),
+    generatePortadaBtn: document.getElementById('generate-portada-btn'),
+    portadaSectionsContainer: document.getElementById('portada-sections-container'),
+    portadaAiEmpty: document.getElementById('portada-ai-empty'),
+    portadaAiLoading: document.getElementById('portada-ai-loading'),
+    portadaAiContent: document.getElementById('portada-ai-content'),
+    portadaNoKeyWarning: document.getElementById('portada-no-key-warning'),
+    quioscoTagFilters: document.getElementById('quiosco-tag-filters'),
+    readerBackdrop: document.getElementById('reader-backdrop')
   };
 
   // --- AYUDANTES DE SEGURIDAD (sanitización de salida) ---
@@ -127,189 +143,105 @@ document.addEventListener('DOMContentLoaded', () => {
     localStorage.setItem('chronos-theme', theme);
   }
 
-  // --- AYUDANTES DE CRIPTOGRAFÍA (AES-GCM + PBKDF2 con salt) ---
-  // Salt persistente y aleatorio por dispositivo (no hay secreto en el código)
-  function getSalt() {
-    let hex = localStorage.getItem('chronos-salt');
-    if (!hex) {
-      const s = crypto.getRandomValues(new Uint8Array(16));
-      hex = Array.from(s).map(b => b.toString(16).padStart(2, '0')).join('');
-      localStorage.setItem('chronos-salt', hex);
-    }
-    return new Uint8Array(hex.match(/.{1,2}/g).map(b => parseInt(b, 16)));
-  }
+  // --- LÓGICA DE INICIALIZACIÓN (Sin contraseña, persistencia directa en localStorage) ---
 
-  async function getEncryptionKey(password) {
-    const base = await crypto.subtle.importKey(
-      'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']
-    );
-    return crypto.subtle.deriveKey(
-      { name: 'PBKDF2', salt: getSalt(), iterations: 150000, hash: 'SHA-256' },
-      base,
-      { name: 'AES-GCM', length: 256 },
-      false,
-      ['encrypt', 'decrypt']
-    );
-  }
-
-  // Valida la clave del vault descifrando un verificador local (sin hash embebido).
-  // En el primer uso, fija la clave introducida como la del vault.
-  async function verifyPassword(password) {
-    if (!password) return false;
-    const v = localStorage.getItem('chronos-verifier');
-    if (!v) {
-      const enc = await encryptData('chronos-ok', password);
-      if (enc) localStorage.setItem('chronos-verifier', enc);
-      return true;
-    }
-    return (await decryptData(v, password)) === 'chronos-ok';
-  }
-
-  async function encryptData(plaintext, password) {
-    try {
-      const key = await getEncryptionKey(password);
-      const iv = crypto.getRandomValues(new Uint8Array(12)); // 12-byte IV for GCM
-      const encoded = new TextEncoder().encode(plaintext);
-      const ciphertext = await crypto.subtle.encrypt(
-        { name: 'AES-GCM', iv },
-        key,
-        encoded
-      );
-      const ivHex = Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join('');
-      const ctHex = Array.from(new Uint8Array(ciphertext)).map(b => b.toString(16).padStart(2, '0')).join('');
-      return `${ivHex}:${ctHex}`;
-    } catch (err) {
-      console.error('Error de encriptación:', err);
-      return null;
-    }
-  }
-
-  async function decryptData(cipheredText, password) {
-    try {
-      if (!cipheredText || !cipheredText.includes(':')) return null;
-      const parts = cipheredText.split(':');
-      const ivHex = parts[0];
-      const ctHex = parts[1];
-      const iv = new Uint8Array(ivHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
-      const ciphertext = new Uint8Array(ctHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
-      const key = await getEncryptionKey(password);
-      const decrypted = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv },
-        key,
-        ciphertext
-      );
-      return new TextDecoder().decode(decrypted);
-    } catch (err) {
-      console.warn('Error de desencriptación (clave incorrecta o datos corruptos):', err);
-      return null;
-    }
-  }
-
-  async function decryptLocalStorage(key, password) {
-    const cipheredText = localStorage.getItem(key);
-    if (!cipheredText) return null;
-    return await decryptData(cipheredText, password);
-  }
-
-  // 4. Cargar Fuentes por defecto y caché local (Bloqueo criptográfico)
   async function initData() {
-    // Intentar leer sesión previa guardada en sessionStorage (dura hasta cerrar pestaña)
-    const sessionKey = sessionStorage.getItem('chronos-session-key');
-    if (sessionKey && await verifyPassword(sessionKey)) {
-      state.password = sessionKey;
-
-      const decryptedFeeds = await decryptLocalStorage('chronos-feeds', sessionKey);
-      const decryptedArticles = await decryptLocalStorage('chronos-articles', sessionKey);
-
-      if (decryptedFeeds) state.feeds = JSON.parse(decryptedFeeds);
-      if (decryptedArticles) state.articles = JSON.parse(decryptedArticles);
-
-      // Ocultar pantalla de bloqueo
-      DOM.loginOverlay.classList.add('fade-out-lock');
-
-      renderFeeds();
-      renderArticles();
-      updateCategoriesDatalist();
-      syncAllFeeds();
-      return;
+    // 1. Cargar clave API de Gemini
+    const savedKey = localStorage.getItem('chronos-gemini-key');
+    if (savedKey && !savedKey.includes(':')) {
+      state.geminiApiKey = savedKey;
+      DOM.geminiKeyInput.value = savedKey;
+    } else {
+      // Si la clave anterior estaba encriptada o no encriptada en otra variable, intentar recuperarla
+      const rawKey = localStorage.getItem('chronos-gemini-key-unencrypted');
+      if (rawKey && !rawKey.includes(':')) {
+        state.geminiApiKey = rawKey;
+        DOM.geminiKeyInput.value = rawKey;
+        localStorage.setItem('chronos-gemini-key', rawKey);
+      }
+      
+      // Limpiar claves antiguas e innecesarias
+      localStorage.removeItem('chronos-gemini-key-unencrypted');
+      localStorage.removeItem('chronos-verifier');
+      localStorage.removeItem('chronos-salt');
+      sessionStorage.removeItem('chronos-session-key');
     }
 
-    // Inicializar UI de Login si no hay sesión
-    initLoginUI();
-  }
-
-  function initLoginUI() {
-    // Asegurar que el overlay está visible
-    DOM.loginOverlay.classList.remove('fade-out-lock');
-
-    // Manejar envío de formulario de login
-    DOM.loginForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const enteredPassword = DOM.loginPasswordInput.value;
-
-      if (await verifyPassword(enteredPassword)) {
-        // Clave correcta!
-        state.password = enteredPassword;
-        sessionStorage.setItem('chronos-session-key', enteredPassword);
-
-        // Intentar desencriptar feeds y artículos existentes
-        const decryptedFeeds = await decryptLocalStorage('chronos-feeds', enteredPassword);
-        const decryptedArticles = await decryptLocalStorage('chronos-articles', enteredPassword);
-
-        if (decryptedFeeds) {
-          state.feeds = JSON.parse(decryptedFeeds);
-        } else {
-          // Si es la primera vez (no hay feeds en localStorage), cargar los recomendados
-          try {
-            const response = await fetch('./feeds-default.json');
-            state.feeds = await response.json();
-            await saveFeedsToStorage();
-          } catch (err) {
-            console.warn('No se pudo cargar feeds-default.json, inicializando vacío.', err);
-            state.feeds = [];
-          }
+    // 2. Cargar feeds
+    const rawFeeds = localStorage.getItem('chronos-feeds');
+    let loadedFeeds = null;
+    if (rawFeeds) {
+      try {
+        loadedFeeds = JSON.parse(rawFeeds);
+        if (!Array.isArray(loadedFeeds)) {
+          loadedFeeds = null;
         }
-
-        if (decryptedArticles) {
-          state.articles = JSON.parse(decryptedArticles);
-        }
-
-        // Esconder overlay con transición
-        DOM.loginOverlay.classList.add('fade-out-lock');
-
-        // Renderizar y sincronizar
-        renderFeeds();
-        renderArticles();
-        updateCategoriesDatalist();
-        syncAllFeeds();
-      } else {
-        // Clave incorrecta: Animación elástica y mensaje de error
-        DOM.loginErrorMsg.classList.remove('hidden');
-        const loginBox = DOM.loginOverlay.querySelector('.login-box');
-        loginBox.classList.add('shake-lock');
-        DOM.loginPasswordInput.value = '';
-        DOM.loginPasswordInput.focus();
-
-        setTimeout(() => {
-          loginBox.classList.remove('shake-lock');
-        }, 400);
+      } catch (e) {
+        console.warn('Feeds corruptos o encriptados, se cargarán por defecto.', e);
+        loadedFeeds = null;
       }
-    });
+    }
+
+    if (loadedFeeds) {
+      state.feeds = loadedFeeds;
+    } else {
+      await loadDefaultFeeds();
+    }
+
+    // 3. Cargar artículos
+    const rawArticles = localStorage.getItem('chronos-articles');
+    if (rawArticles) {
+      try {
+        state.articles = JSON.parse(rawArticles);
+        if (!Array.isArray(state.articles)) {
+          state.articles = [];
+        }
+      } catch (e) {
+        console.warn('Artículos corruptos o encriptados, inicializando vacío.', e);
+        state.articles = [];
+      }
+    } else {
+      state.articles = [];
+    }
+
+    // 4. Cargar caché de portada
+    const cachedPortada = sessionStorage.getItem('portada-ai-cache');
+    if (cachedPortada) {
+      try {
+        state.portadaAiContent = JSON.parse(cachedPortada);
+      } catch (e) {
+        state.portadaAiContent = null;
+      }
+    }
+
+    // Inicializar tab activa por defecto
+    switchTab('portada-ai');
+
+    // Renderizar y sincronizar
+    renderFeeds();
+    renderArticles();
+    updateCategoriesDatalist();
+    syncAllFeeds();
   }
 
-  // --- LÓGICA DE ALMACENAMIENTO (ENCRIPTADO ASÍNCRONO EN SEGUNDO PLANO) ---
+  async function loadDefaultFeeds() {
+    try {
+      const response = await fetch('./feeds-default.json');
+      state.feeds = await response.json();
+      await saveFeedsToStorage();
+    } catch (err) {
+      console.warn('No se pudo cargar feeds-default.json, inicializando vacío.', err);
+      state.feeds = [];
+    }
+  }
+
+  // --- LÓGICA DE ALMACENAMIENTO (PERSISTENCIA DIRECTA EN LOCALSTORAGE) ---
 
   async function saveFeedsToStorage() {
-    if (!state.password) return;
-    const ciphertext = await encryptData(JSON.stringify(state.feeds), state.password);
-    if (ciphertext) {
-      localStorage.setItem('chronos-feeds', ciphertext);
-    }
+    localStorage.setItem('chronos-feeds', JSON.stringify(state.feeds));
   }
 
   async function saveArticlesToStorage() {
-    if (!state.password) return;
-
     // Para no exceder la cuota de localStorage (5MB), guardamos máximo los 40 artículos más recientes por feed
     const grouped = {};
     state.articles.forEach(art => {
@@ -328,10 +260,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     state.articles = optimized;
-    const ciphertext = await encryptData(JSON.stringify(state.articles), state.password);
-    if (ciphertext) {
-      localStorage.setItem('chronos-articles', ciphertext);
-    }
+    localStorage.setItem('chronos-articles', JSON.stringify(state.articles));
   }
 
   // --- ADQUISICIÓN Y PARSEO RSS (RED) ---
@@ -680,6 +609,34 @@ document.addEventListener('DOMContentLoaded', () => {
       );
     }
 
+    // 3. Filtrado por Tag de Quiosco (IA, Dev, Diseño, etc.)
+    if (state.activeTagFilter && state.activeTagFilter !== 'all') {
+      const tag = state.activeTagFilter;
+      const iaKeywords = ['ia', 'ai', 'gemini', 'claude', 'gpt', 'llm', 'inteligencia artificial', 'openai', 'machine learning', 'deep learning', 'transformers', 'copilot'];
+      const devKeywords = ['dev', 'javascript', 'typescript', 'react', 'web', 'rust', 'go', 'python', 'css', 'html', 'backend', 'frontend', 'node', 'software', 'programming', 'programación', 'desarrollo', 'api', 'mainframe', 'tecnología'];
+      const disenoKeywords = ['diseño', 'design', 'ui', 'ux', 'css', 'layout', 'tailwind', 'styling', 'figma', 'interfaz', 'aesthetics', 'aesthetica'];
+      
+      filtered = filtered.filter(a => {
+        const titleLower = a.title.toLowerCase();
+        const excerptLower = a.excerpt.toLowerCase();
+        const combined = `${titleLower} ${excerptLower}`;
+        
+        if (tag === 'ia') {
+          return iaKeywords.some(kw => combined.includes(kw));
+        } else if (tag === 'dev') {
+          return devKeywords.some(kw => combined.includes(kw));
+        } else if (tag === 'diseno') {
+          return disenoKeywords.some(kw => combined.includes(kw));
+        } else if (tag === 'otros') {
+          const isIa = iaKeywords.some(kw => combined.includes(kw));
+          const isDev = devKeywords.some(kw => combined.includes(kw));
+          const isDiseno = disenoKeywords.some(kw => combined.includes(kw));
+          return !isIa && !isDev && !isDiseno;
+        }
+        return true;
+      });
+    }
+
     // Ordenar artículos por fecha descendente
     filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
 
@@ -687,29 +644,41 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (filtered.length === 0) {
       DOM.articlesContainer.innerHTML = `
-        <div class="reader-placeholder">
-          <div class="placeholder-crest serif-text">✍</div>
+        <div class="col-span-full py-16 text-center text-muted">
+          <div class="text-3xl mb-2">✍</div>
           <p>No hay artículos que coincidan con los filtros seleccionados.</p>
         </div>
       `;
       return;
     }
 
-    // Dibujar tarjetas
+    // Dibujar tarjetas (Bento Grid asimétrico)
     filtered.forEach(art => {
       const feedName = getFeedName(art.feedUrl);
       const card = document.createElement('article');
-      card.className = `article-card ${art.read ? 'read' : ''} ${state.activeArticleId === art.id ? 'active' : ''}`;
+      
+      // Determinar si es una noticia de hoy (menos de 24 horas)
+      const timeDiff = Date.now() - new Date(art.date).getTime();
+      const isToday = timeDiff < 24 * 60 * 60 * 1000;
+      const isFeatured = isToday; 
+
+      card.className = `article-card border-2 border-border-ink bg-card-bg p-5 flex flex-col justify-between transition-all duration-300 ${isFeatured ? 'col-span-1 md:col-span-2 md:row-span-2 border-accent-terracotta bg-accent-terracotta/5 md:p-6 shadow-editorial' : 'col-span-1 shadow-sm'} ${art.read ? 'opacity-65' : ''} ${state.activeArticleId === art.id ? 'ring-2 ring-accent-terracotta' : ''}`;
       
       const readableDate = new Date(art.date).toLocaleDateString('es-ES', { month: 'short', day: 'numeric' });
 
       card.innerHTML = `
-        <div class="article-card-header">
-          <span class="article-card-source mono-text">${escapeHtml(feedName.toUpperCase())}</span>
-          <span class="article-card-date mono-text">${escapeHtml(readableDate)}</span>
+        <div class="space-y-2.5">
+          <div class="flex justify-between items-center text-[10px] font-mono text-muted uppercase">
+            <span class="text-accent-terracotta font-bold">${escapeHtml(feedName)}</span>
+            <span>${escapeHtml(readableDate)}</span>
+          </div>
+          <h3 class="${isFeatured ? 'text-lg md:text-xl font-bold font-serif leading-tight' : 'text-sm font-bold font-serif leading-snug'} text-ink hover:text-accent-terracotta transition-colors">${escapeHtml(art.title)}</h3>
+          <p class="text-xs text-muted leading-relaxed line-clamp-3">${escapeHtml(art.excerpt)}</p>
         </div>
-        <h3 class="article-card-title serif-text">${escapeHtml(art.title)}</h3>
-        <p class="article-card-excerpt">${escapeHtml(art.excerpt)}</p>
+        <div class="mt-5 pt-3 border-t border-border-muted/50 flex justify-between items-center text-[10px] font-mono">
+          <span class="text-muted font-semibold uppercase tracking-wider">${isToday ? '🔥 Reciente' : '📅 Anterior'}</span>
+          <span class="text-accent-terracotta font-bold group-hover:underline">Leer más →</span>
+        </div>
       `;
 
       card.setAttribute('role', 'button');
@@ -858,6 +827,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- COMPORTAMIENTOS E INTERACCIONES ---
 
   function changeActiveFeed(feedUrl) {
+    if (state.activeTab !== 'quiosco') {
+      switchTab('quiosco');
+    }
     // Si soporta View Transitions nativas, animar transición de feeds
     if (document.startViewTransition) {
       document.startViewTransition(() => {
@@ -890,11 +862,13 @@ document.addEventListener('DOMContentLoaded', () => {
     renderArticles();
     renderReader();
 
-    // En móvil, deslizar panel del lector hacia arriba
-    if (window.innerWidth <= 900) {
-      DOM.articleReader.classList.add('open');
-
-    }
+    // Abrir lector lateral y backdrop
+    DOM.articleReader.classList.add('open');
+    DOM.readerBackdrop.classList.remove('hidden');
+    setTimeout(() => {
+      DOM.readerBackdrop.classList.remove('opacity-0');
+      DOM.readerBackdrop.classList.add('opacity-100');
+    }, 10);
   }
 
   function closeArticleReader() {
@@ -902,6 +876,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     state.activeArticleId = null;
     renderArticles();
+
+    // Ocultar backdrop
+    DOM.readerBackdrop.classList.remove('opacity-100');
+    DOM.readerBackdrop.classList.add('opacity-0');
+    setTimeout(() => {
+      DOM.readerBackdrop.classList.add('hidden');
+    }, 300);
   }
 
   function toggleStarArticle() {
@@ -1069,7 +1050,232 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // --- LÓGICA DE TABS Y PORTADA AI ---
+
+  function switchTab(tab) {
+    state.activeTab = tab;
+    if (tab === 'portada-ai') {
+      DOM.tabPortadaBtn.classList.add('text-accent-terracotta', 'border-b-accent-terracotta');
+      DOM.tabPortadaBtn.classList.remove('text-muted', 'border-b-transparent');
+      DOM.tabQuioscoBtn.classList.add('text-muted', 'border-b-transparent');
+      DOM.tabQuioscoBtn.classList.remove('text-accent-terracotta', 'border-b-accent-terracotta');
+      
+      DOM.viewPortadaAi.classList.remove('hidden');
+      DOM.viewQuiosco.classList.add('hidden');
+      
+      renderPortadaAi();
+    } else {
+      DOM.tabQuioscoBtn.classList.add('text-accent-terracotta', 'border-b-accent-terracotta');
+      DOM.tabQuioscoBtn.classList.remove('text-muted', 'border-b-transparent');
+      DOM.tabPortadaBtn.classList.add('text-muted', 'border-b-transparent');
+      DOM.tabPortadaBtn.classList.remove('text-accent-terracotta', 'border-b-accent-terracotta');
+      
+      DOM.viewQuiosco.classList.remove('hidden');
+      DOM.viewPortadaAi.classList.add('hidden');
+      
+      renderArticles();
+    }
+  }
+
+  function renderPortadaAi() {
+    // Verificar si hay clave
+    if (!state.geminiApiKey) {
+      DOM.portadaAiEmpty.classList.remove('hidden');
+      DOM.portadaAiLoading.classList.add('hidden');
+      DOM.portadaAiContent.classList.add('hidden');
+      DOM.portadaNoKeyWarning.classList.remove('hidden');
+      return;
+    } else {
+      DOM.portadaNoKeyWarning.classList.add('hidden');
+    }
+
+    if (state.portadaAiContent) {
+      DOM.portadaAiEmpty.classList.add('hidden');
+      DOM.portadaAiLoading.classList.add('hidden');
+      DOM.portadaAiContent.classList.remove('hidden');
+      renderPortadaContent(state.portadaAiContent);
+    } else {
+      DOM.portadaAiEmpty.classList.remove('hidden');
+      DOM.portadaAiLoading.classList.add('hidden');
+      DOM.portadaAiContent.classList.add('hidden');
+    }
+  }
+
+  function renderPortadaContent(portadaData) {
+    DOM.portadaSectionsContainer.innerHTML = '';
+    
+    portadaData.forEach((sec, idx) => {
+      const col = document.createElement('div');
+      col.className = "flex flex-col gap-4 p-4 md:p-6 first:pl-0 last:pr-0 border-b border-border-muted md:border-b-0 md:border-r last:border-r-0 md:first:pl-0 md:last:pr-0";
+      
+      let refHtml = '';
+      if (sec.references && sec.references.length > 0) {
+        refHtml = `<div class="mt-4 pt-3 border-t border-dashed border-border-muted">
+          <span class="text-[9px] font-mono text-muted uppercase block mb-2">Fuentes y Referencias:</span>
+          <div class="flex flex-wrap gap-1.5">`;
+        sec.references.forEach(ref => {
+          // Intentar asociar con un artículo real por id o título similar
+          const match = state.articles.find(a => a.id === ref.id || a.title.toLowerCase().includes((ref.title || '').toLowerCase()));
+          if (match) {
+            refHtml += `<button class="ref-link-btn text-[10px] font-serif bg-sidebar hover:bg-accent-terracotta hover:text-white px-2 py-0.5 border border-border-muted transition-colors" data-art-id="${match.id}">${escapeHtml(ref.title || match.title)}</button>`;
+          } else {
+            refHtml += `<span class="text-[10px] font-serif bg-sidebar px-2 py-0.5 border border-border-muted text-muted">${escapeHtml(ref.title || 'Referencia')}</span>`;
+          }
+        });
+        refHtml += `</div></div>`;
+      }
+
+      col.innerHTML = `
+        <div class="space-y-2.5">
+          <span class="text-[10px] font-mono font-bold tracking-widest text-accent-terracotta uppercase block">${escapeHtml(sec.category)}</span>
+          <h3 class="serif-text font-bold text-xl md:text-2xl leading-tight text-ink hover:text-accent-terracotta transition-colors">${escapeHtml(sec.headline)}</h3>
+        </div>
+        <div class="serif-text text-sm text-ink leading-relaxed text-justify space-y-3 mt-3">
+          ${(sec.editorialSummary || '').split('\n').map(p => p.trim() ? `<p>${escapeHtml(p)}</p>` : '').join('')}
+        </div>
+        ${refHtml}
+      `;
+
+      DOM.portadaSectionsContainer.appendChild(col);
+    });
+
+    // Agregar eventos a los botones de referencias
+    DOM.portadaSectionsContainer.querySelectorAll('.ref-link-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        openArticle(btn.dataset.artId);
+      });
+    });
+  }
+
+  async function saveGeminiKeyToStorage(key) {
+    state.geminiApiKey = key;
+    localStorage.setItem('chronos-gemini-key', key);
+  }
+
   // --- GESTIÓN DE EVENTOS (LISTENERS) ---
+
+  // Conmutador de Tabs Principales
+  DOM.tabPortadaBtn.addEventListener('click', () => switchTab('portada-ai'));
+  DOM.tabQuioscoBtn.addEventListener('click', () => switchTab('quiosco'));
+
+  // Cerrar lector haciendo clic fuera
+  DOM.readerBackdrop.addEventListener('click', closeArticleReader);
+
+  // Guardar clave API de Gemini
+  DOM.saveGeminiKeyBtn.addEventListener('click', async () => {
+    const key = DOM.geminiKeyInput.value.trim();
+    if (!key) {
+      toast('Por favor, introduce una clave API válida.');
+      return;
+    }
+    await saveGeminiKeyToStorage(key);
+    toast('✓ Clave API de Gemini guardada.');
+    if (state.activeTab === 'portada-ai') {
+      renderPortadaAi();
+    }
+  });
+
+  // Generar Portada AI
+  DOM.generatePortadaBtn.addEventListener('click', async () => {
+    if (!state.geminiApiKey) {
+      DOM.portadaNoKeyWarning.classList.remove('hidden');
+      return;
+    }
+    
+    // Recolectar noticias recientes (últimas 48 horas o últimas 30)
+    const todayArticles = state.articles.filter(art => {
+      return (Date.now() - new Date(art.date).getTime()) < 48 * 60 * 60 * 1000;
+    });
+    const articlesToProcess = todayArticles.length > 0 ? todayArticles : state.articles.slice(0, 30);
+
+    if (articlesToProcess.length === 0) {
+      toast('Sincroniza tus fuentes primero. No hay artículos para procesar.');
+      return;
+    }
+
+    DOM.portadaAiEmpty.classList.add('hidden');
+    DOM.portadaAiLoading.classList.remove('hidden');
+    DOM.portadaAiContent.classList.add('hidden');
+
+    try {
+      const articlesListText = articlesToProcess.map(art => {
+        return `ID: "${art.id}" | Título: "${art.title}" | Categoría: "${getFeedName(art.feedUrl)}" | Extracto: "${art.excerpt}"`;
+      }).join('\n');
+
+      const systemPrompt = `
+      Eres un prestigioso redactor editorial en español para un diario impreso de gran reputación.
+      Tu tarea es analizar las noticias tecnológicas del día y redactar una portada de periódico real en español.
+      
+      Estructura el output final EXCLUSIVAMENTE como un array JSON de objetos con el siguiente formato:
+      [
+        {
+          "category": "Inteligencia Artificial",
+          "headline": "El titular principal y llamativo para esta sección",
+          "editorialSummary": "Un texto fluido, bien redactado, de tono periodístico, analizando y resumiendo las noticias de esta categoría hoy. No listes las noticias una a una. En su lugar, redacta una crónica ejecutiva que conecte los distintos hechos del día con elegancia. El texto debe tener entre 2 y 4 párrafos bien construidos.",
+          "references": [
+            {"title": "Título corto del artículo", "id": "ID exacto del artículo"}
+          ]
+        }
+      ]
+      
+      Importante:
+      1. Devuelve EXCLUSIVAMENTE el JSON. Sin bloques de código markdown, sin texto aclaratorio antes o después.
+      2. Redacta 100% en español.
+      3. No utilices viñetas en el resumen editorial. Redáctalo como una columna de opinión o crónica real.
+      4. Agrupa las noticias en las siguientes 3 o 4 secciones temáticas más relevantes hoy: 'Inteligencia Artificial', 'Desarrollo Web', 'Mainframe y Tecnología', 'Diseño y UI/UX', u otras si aplica.
+      `;
+
+      const userPrompt = `Aquí tienes las noticias de hoy:\n${articlesListText}\n\nPor favor, genera la portada en formato JSON según las instrucciones.`;
+
+      const res = await fetch(\`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=\${state.geminiApiKey}\`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: systemPrompt + "\\n\\n" + userPrompt }] }]
+        })
+      });
+
+      if (!res.ok) throw new Error(\`Google API HTTP \${res.status}\`);
+
+      const resData = await res.json();
+      const text = resData?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+      
+      let cleanJson = text.trim();
+      if (cleanJson.startsWith("```")) {
+        const start = cleanJson.indexOf("[");
+        const end = cleanJson.lastIndexOf("]");
+        if (start !== -1 && end !== -1) {
+          cleanJson = cleanJson.slice(start, end + 1);
+        }
+      }
+
+      const portadaData = JSON.parse(cleanJson);
+      state.portadaAiContent = portadaData;
+      sessionStorage.setItem('portada-ai-cache', JSON.stringify(portadaData));
+
+      DOM.portadaAiLoading.classList.add('hidden');
+      DOM.portadaAiContent.classList.remove('hidden');
+      renderPortadaContent(portadaData);
+      toast('¡Portada AI generada exitosamente!');
+    } catch (err) {
+      console.error('Error al generar portada AI:', err);
+      toast('Falló la generación de la portada AI. Verifica tu clave de API y conexión.');
+      renderPortadaAi();
+    }
+  });
+
+  // Filtros rápidos del Quiosco
+  DOM.quioscoTagFilters.addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+
+    DOM.quioscoTagFilters.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    state.activeTagFilter = btn.dataset.tag;
+    renderArticles();
+  });
+
 
   // Búsqueda
   DOM.searchInput.addEventListener('input', (e) => {

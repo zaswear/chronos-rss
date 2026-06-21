@@ -144,17 +144,13 @@ body {
 
 /* Anchos proporcionales */
 .pane-sidebar {
-  width: 22%;
   background-color: var(--bg-sidebar);
 }
 
 .pane-articles {
-  width: 38%;
 }
 
 .pane-reader {
-  width: 40%;
-  border-right: none;
 }
 
 .pane-title {
@@ -1235,4 +1231,61 @@ html[data-theme="dark"] .login-error {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
+
+/* ══════════════════════════════════════════════════
+   ESTILOS ADICIONALES PARA PORTADA AI Y SLIDE-OVER
+   ══════════════════════════════════════════════════ */
+
+/* Loader Editorial */
+.editorial-spinner {
+  width: 48px;
+  height: 48px;
+  border: 3px solid var(--text-ink);
+  border-radius: 50%;
+  display: inline-block;
+  position: relative;
+  box-sizing: border-box;
+  animation: rotation 1s linear infinite;
+}
+.editorial-spinner::after {
+  content: '';  
+  box-sizing: border-box;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  border-bottom-color: var(--accent-terracotta);
+}
+
+@keyframes rotation {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Forzar comportamiento de slide-over lateral para el lector tanto en móvil como en escritorio */
+.pane-reader {
+  position: fixed !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  right: 0 !important;
+  transform: translateX(100%) !important;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  z-index: 50 !important;
+}
+
+.pane-reader.open {
+  transform: translateX(0) !important;
+}
+
+/* Asegurar que la cabecera editorial original no sea demasiado grande en móvil */
+@media (max-width: 900px) {
+  .editorial-header {
+    border-bottom: 2px solid var(--border-ink) !important;
+  }
+}
+
 

@@ -196,6 +196,10 @@ document.addEventListener('DOMContentLoaded', () => {
       state.articles = [];
     }
 
+    // Limpiar artículos huérfanos de fuentes ya eliminadas (deja vacío El Quiosco
+    // cuando no quedan fuentes, en vez de mostrar artículos "FEED EXTERNO").
+    pruneOrphanArticles();
+
     // 4. Cargar caché de portada de sesión
     const cachedPortada = sessionStorage.getItem('portada-ai-cache');
     if (cachedPortada) {
@@ -607,6 +611,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // Filtrado de artículos
     let filtered = [...state.articles];
 
+    // 0. Excluir artículos de fuentes ya eliminadas (huérfanos). Los guardados (★)
+    //    solo se ven en la pestaña "Guardados".
+    if (state.activeFeed !== 'starred') {
+      const feedUrls = new Set(state.feeds.map(f => f.url));
+      filtered = filtered.filter(a => feedUrls.has(a.feedUrl));
+    }
+
     // 1. Filtrado por Pestaña/Feed
     if (state.activeFeed === 'unread') {
       filtered = filtered.filter(a => !a.read);
@@ -997,6 +1008,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Obtener artículos visibles
     let filtered = [...state.articles];
+    if (state.activeFeed !== 'starred') {
+      const feedUrls = new Set(state.feeds.map(f => f.url));
+      filtered = filtered.filter(a => feedUrls.has(a.feedUrl));
+    }
     if (state.activeFeed === 'unread') filtered = filtered.filter(a => !a.read);
     else if (state.activeFeed === 'starred') filtered = filtered.filter(a => a.starred);
     else if (state.activeFeed !== 'all') filtered = filtered.filter(a => a.feedUrl === state.activeFeed);
@@ -1046,11 +1061,21 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function getUnreadCountGlobal() {
-    return state.articles.filter(a => !a.read).length;
+    const feedUrls = new Set(state.feeds.map(f => f.url));
+    return state.articles.filter(a => !a.read && feedUrls.has(a.feedUrl)).length;
   }
 
   function getUnreadCountForFeed(url) {
     return state.articles.filter(a => a.feedUrl === url && !a.read).length;
+  }
+
+  // Elimina artículos "huérfanos" (de fuentes que ya no están suscritas).
+  // Conserva los guardados (★) para no perder lo que marcaste como favorito.
+  function pruneOrphanArticles() {
+    const feedUrls = new Set(state.feeds.map(f => f.url));
+    const before = state.articles.length;
+    state.articles = state.articles.filter(a => feedUrls.has(a.feedUrl) || a.starred);
+    if (state.articles.length !== before) saveArticlesToStorage();
   }
 
   function updateCategoriesDatalist() {

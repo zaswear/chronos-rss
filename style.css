@@ -1266,19 +1266,23 @@ html[data-theme="dark"] .login-error {
   100% { transform: rotate(360deg); }
 }
 
-/* Forzar comportamiento de slide-over lateral para el lector tanto en móvil como en escritorio */
+/* Lector a PANTALLA COMPLETA de la sección (overlay sobre las vistas, ya no slide-over lateral).
+   Va dentro de <main id="pane-articles-list"> que es position:relative. */
 .pane-reader {
-  position: fixed !important;
-  top: 0 !important;
-  bottom: 0 !important;
-  right: 0 !important;
-  transform: translateX(100%) !important;
-  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
-  z-index: 50 !important;
+  position: absolute !important;
+  inset: 0 !important;
+  transform: none !important;
+  z-index: 60 !important; /* por encima de la cabecera editorial (z-index:50) */
+  background-color: var(--bg-paper) !important; /* opaco: oculta la rejilla de detrás */
 }
 
-.pane-reader.open {
-  transform: translateX(0) !important;
+.pane-reader:not(.hidden) {
+  animation: reader-fade-in 0.25s ease;
+}
+
+@keyframes reader-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* Asegurar que la cabecera editorial original no sea demasiado grande en móvil */

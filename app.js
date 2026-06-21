@@ -71,7 +71,6 @@ document.addEventListener('DOMContentLoaded', () => {
     portadaAiLoading: document.getElementById('portada-ai-loading'),
     portadaAiContent: document.getElementById('portada-ai-content'),
     quioscoTagFilters: document.getElementById('quiosco-tag-filters'),
-    readerBackdrop: document.getElementById('reader-backdrop'),
     // Badge de usuario autenticado
     userAvatar: document.getElementById('user-avatar'),
     userName: document.getElementById('user-name')
@@ -360,6 +359,31 @@ document.addEventListener('DOMContentLoaded', () => {
     tmp.innerHTML = html;
     const text = tmp.textContent || tmp.innerText || '';
     return text.substring(0, 160).trim() + (text.length > 160 ? '...' : '');
+  }
+
+  // Analiza un feed para decidir si vale la pena: que se descargue, parsee, tenga
+  // artículos y que al menos uno traiga CONTENIDO real (no solo un enlace tipo
+  // "Comments"). Devuelve { ok, count, hasContent }.
+  async function analyzeFeed(feedUrl) {
+    try {
+      const xmlText = await fetchFeedWithFallback(feedUrl);
+      const doc = new DOMParser().parseFromString(xmlText, 'text/xml');
+      if (doc.querySelector('parsererror')) return { ok: false, count: 0, hasContent: false };
+
+      const items = parseRSS(xmlText, feedUrl);
+      if (items.length === 0) return { ok: false, count: 0, hasContent: false };
+
+      // ¿Algún artículo trae texto sustancial? (filtra feeds "vacíos" como HN frontpage)
+      const hasContent = items.some(it => {
+        const body = `${it.excerpt || ''} ${it.content || ''}`;
+        const text = body.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+        return text.length >= 60;
+      });
+
+      return { ok: true, count: items.length, hasContent };
+    } catch {
+      return { ok: false, count: 0, hasContent: false };
+    }
   }
 
   // --- MOTOR DE TRADUCCIÓN ---
@@ -772,11 +796,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // El contenido del feed es de un tercero NO confiable: se higieniza con DOMPurify.
     let cleanHTML = art.content || '';
-    // Si viene texto plano o XML escapado, asegurar saltos de línea (escapando el texto)
-    if (!cleanHTML.includes('<p>') && !cleanHTML.includes('<br>')) {
+    // Si NO trae etiquetas HTML, es texto plano → lo envolvemos en párrafos (escapado).
+    // Si SÍ trae etiquetas (p.ej. un <a> de Hacker News), se higieniza tal cual para
+    // que se renderice como enlace en vez de mostrarse el código literal.
+    const looksLikeHtml = /<[a-z][\s\S]*>/i.test(cleanHTML);
+    if (!looksLikeHtml) {
       cleanHTML = cleanHTML.split('\n').map(p => p.trim() ? `<p>${escapeHtml(p)}</p>` : '').join('');
     }
     cleanHTML = sanitizeFeedHtml(cleanHTML);
+    // Si tras higienizar no queda contenido legible, avisamos en vez de dejarlo en blanco.
+    if (!cleanHTML.replace(/<[^>]*>/g, '').trim()) {
+      cleanHTML = `<p style="color:var(--text-muted);font-style:italic">Esta entrada no incluye contenido en el feed. Ábrela en su web original para leerla completa.</p>`;
+    }
 
     DOM.focusedArticleWrapper.innerHTML = `
       <div class="article-header">
@@ -855,27 +886,16 @@ document.addEventListener('DOMContentLoaded', () => {
     renderArticles();
     renderReader();
 
-    // Abrir lector lateral y backdrop
-    DOM.articleReader.classList.add('open');
-    DOM.readerBackdrop.classList.remove('hidden');
-    setTimeout(() => {
-      DOM.readerBackdrop.classList.remove('opacity-0');
-      DOM.readerBackdrop.classList.add('opacity-100');
-    }, 10);
+    // Mostrar el lector a pantalla completa de la sección
+    DOM.articleReader.classList.remove('hidden');
+    if (DOM.readerScroll) DOM.readerScroll.scrollTop = 0;
   }
 
   function closeArticleReader() {
-    DOM.articleReader.classList.remove('open');
-
+    // Ocultar el lector y volver a la lista (un solo clic en "Volver")
+    DOM.articleReader.classList.add('hidden');
     state.activeArticleId = null;
     renderArticles();
-
-    // Ocultar backdrop
-    DOM.readerBackdrop.classList.remove('opacity-100');
-    DOM.readerBackdrop.classList.add('opacity-0');
-    setTimeout(() => {
-      DOM.readerBackdrop.classList.add('hidden');
-    }, 300);
   }
 
   function toggleStarArticle() {
@@ -1135,9 +1155,6 @@ document.addEventListener('DOMContentLoaded', () => {
   DOM.tabPortadaBtn.addEventListener('click', () => switchTab('portada-ai'));
   DOM.tabQuioscoBtn.addEventListener('click', () => switchTab('quiosco'));
 
-  // Cerrar lector haciendo clic fuera
-  DOM.readerBackdrop.addEventListener('click', closeArticleReader);
-
   // Generar Portada AI
   DOM.generatePortadaBtn.addEventListener('click', async () => {
     // Recolectar noticias recientes (últimas 48 horas o últimas 30)
@@ -1274,6 +1291,23 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    // Validar el feed ANTES de añadirlo: debe descargarse, parsear y tener artículos con contenido.
+    const submitBtn = DOM.addFeedForm.querySelector('button[type="submit"]');
+    const prevLabel = submitBtn ? submitBtn.textContent : '';
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Comprobando…'; }
+
+    const check = await analyzeFeed(url);
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = prevLabel; }
+
+    if (!check.ok) {
+      toast('No se pudo leer un RSS válido en esa URL. No se ha añadido.');
+      return;
+    }
+    if (!check.hasContent) {
+      toast('Ese feed no trae artículos con contenido. No se ha añadido.');
+      return;
+    }
+
     const nuevoFeed = { url, nombre, categoria };
     state.feeds.push(nuevoFeed);
     saveFeedsToStorage();
@@ -1282,6 +1316,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     DOM.addFeedPopover.classList.add('hidden');
     DOM.addFeedForm.reset();
+    toast(`Suscrito a ${nombre}`);
 
     // Sincronizar de inmediato
     await syncFeed(nuevoFeed);
@@ -1366,26 +1401,42 @@ document.addEventListener('DOMContentLoaded', () => {
     renderDiscover();
   });
 
-  function renderDiscover() {
-    DOM.discoverListContainer.innerHTML = '';
-    
+  const SPINNER = `<span style="display:inline-block;width:12px;height:12px;border:2px solid var(--border-muted);border-top-color:var(--text-ink);border-radius:50%;animation:rotation .8s linear infinite;vertical-align:middle"></span>`;
+
+  async function renderDiscover() {
+    const container = DOM.discoverListContainer;
+
     if (state.suggestions.length === 0) {
-      DOM.discoverListContainer.innerHTML = `<li class="reader-placeholder"><p>No hay sugerencias disponibles.</p></li>`;
+      container.innerHTML = `<li class="reader-placeholder"><p>No hay sugerencias disponibles.</p></li>`;
       return;
     }
 
-    // Mostrar un subconjunto de sugerencias (máximo 6 para no saturar)
-    const subset = state.suggestions.slice(0, 6);
+    // Estado de carga mientras verificamos en vivo qué fuentes funcionan
+    container.innerHTML = `<li class="text-xs text-muted font-mono p-3 flex items-center gap-2">${SPINNER} Buscando fuentes activas…</li>`;
 
-    subset.forEach(item => {
+    // Probamos un pool de candidatas (no suscritas) y nos quedamos solo con las que
+    // se descargan, parsean Y traen artículos con contenido real.
+    const pool = state.suggestions
+      .filter(s => !state.feeds.some(f => f.url === s.url))
+      .slice(0, 8);
+
+    const checked = await Promise.all(
+      pool.map(async (item) => ({ item, res: await analyzeFeed(item.url) }))
+    );
+    const valid = checked
+      .filter(c => c.res.ok && c.res.hasContent)
+      .map(c => c.item)
+      .slice(0, 6);
+
+    if (valid.length === 0) {
+      container.innerHTML = `<li class="reader-placeholder text-xs text-muted p-3"><p>No se han encontrado fuentes con artículos ahora mismo. Pulsa <strong>Recargar</strong> para probar otras.</p></li>`;
+      return;
+    }
+
+    container.innerHTML = '';
+    valid.forEach(item => {
       const li = document.createElement('li');
       li.className = 'discover-item';
-
-      const isSubscribed = state.feeds.some(f => f.url === item.url);
-      const subscribeBtnHtml = isSubscribed
-        ? `<button class="btn-small" disabled style="opacity:0.6; cursor:default;">Suscrito</button>`
-        : `<button class="btn-small btn-add-suggested">Añadir</button>`;
-
       li.innerHTML = `
         <div class="discover-item-header">
           <span class="discover-item-title">${escapeHtml(item.nombre)}</span>
@@ -1393,54 +1444,21 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
         <span class="discover-item-url">${escapeHtml(item.url)}</span>
         <div class="discover-item-actions">
-          <span class="discover-status-badge unchecked" id="status-badge-${btoa(item.url).replace(/=/g, '').substring(0, 24)}">Sin verificar</span>
+          <span class="discover-status-badge valid">Activo ✓</span>
           <div class="discover-buttons">
             <a href="${safeUrl(item.web)}" target="_blank" rel="noopener noreferrer" class="btn-text" style="font-size:0.7rem; padding:0.2rem 0.4rem;">Visitar</a>
-            <button class="btn-text btn-verify-suggested" style="font-size:0.7rem; padding:0.2rem 0.4rem;">Verificar</button>
-            ${subscribeBtnHtml}
+            <button class="btn-small btn-add-suggested">Añadir</button>
           </div>
         </div>
       `;
-
-      // Eventos
-      li.querySelector('.btn-verify-suggested')?.addEventListener('click', (e) => {
-        verifySuggestedFeed(item.url);
-      });
-
       li.querySelector('.btn-add-suggested')?.addEventListener('click', (e) => {
-        subscribeSuggestedFeed(item);
+        subscribeSuggestedFeed(item, e.currentTarget);
       });
-
-      DOM.discoverListContainer.appendChild(li);
+      container.appendChild(li);
     });
   }
 
-  async function verifySuggestedFeed(feedUrl) {
-    const badgeId = `status-badge-${btoa(feedUrl).replace(/=/g, '').substring(0, 24)}`;
-    const badge = document.getElementById(badgeId);
-    if (!badge) return;
-
-    badge.className = 'discover-status-badge unchecked';
-    badge.textContent = 'Verificando...';
-
-    try {
-      const xmlText = await fetchFeedWithFallback(feedUrl);
-      // Validar si parsea correctamente
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(xmlText, 'text/xml');
-      const parseError = doc.querySelector('parsererror');
-      if (parseError) throw new Error('Error parseo');
-
-      badge.className = 'discover-status-badge valid';
-      badge.textContent = 'Válido ✓';
-    } catch (err) {
-      console.warn('Error al verificar feed:', feedUrl, err);
-      badge.className = 'discover-status-badge invalid';
-      badge.textContent = 'No disponible ✗';
-    }
-  }
-
-  async function subscribeSuggestedFeed(item) {
+  async function subscribeSuggestedFeed(item, btn) {
     if (state.feeds.some(f => f.url === item.url)) return;
 
     const nuevoFeed = {
@@ -1453,10 +1471,17 @@ document.addEventListener('DOMContentLoaded', () => {
     state.feeds.push(nuevoFeed);
     saveFeedsToStorage();
     renderFeeds();
-    renderDiscover(); // Recargar discover para deshabilitar botón
     updateCategoriesDatalist();
 
-    // Sincronizar de inmediato
+    // Actualizar el botón en el sitio (sin re-verificar toda la lista)
+    if (btn) {
+      btn.textContent = 'Suscrito';
+      btn.disabled = true;
+      btn.style.opacity = '0.6';
+      btn.style.cursor = 'default';
+    }
+    toast(`Suscrito a ${item.nombre}`);
+
     await syncFeed(nuevoFeed);
   }
 

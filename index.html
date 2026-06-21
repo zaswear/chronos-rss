@@ -50,9 +50,6 @@
 </head>
 <body class="bg-paper text-ink font-sans h-screen overflow-hidden flex flex-col md:flex-row relative">
 
-  <!-- CAPA DE BACKDROP PARA EL LECTOR SLIDE-OVER -->
-  <div id="reader-backdrop" class="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 hidden opacity-0 transition-opacity duration-300"></div>
-
   <!-- COLUMNA 1: Suscripciones y Gestión (Sidebar) -->
   <aside class="pane pane-sidebar w-full md:w-80 border-r-2 border-border-ink bg-sidebar flex flex-col flex-shrink-0 h-full overflow-hidden" id="pane-subscriptions">
     <!-- Cabecera del panel de suscripciones -->
@@ -143,7 +140,7 @@
   </aside>
 
   <!-- SECCIÓN CENTRAL Y DERECHA: Portada o Quiosco (Pane de Artículos unificado) -->
-  <main class="pane pane-articles flex-1 flex flex-col overflow-hidden h-full active-pane" id="pane-articles-list">
+  <main class="pane pane-articles flex-1 flex flex-col overflow-hidden h-full active-pane relative" id="pane-articles-list">
 
     <!-- Cabecera Editorial Principal -->
     <header class="editorial-header flex-shrink-0">
@@ -257,10 +254,8 @@
 
     </div>
 
-  </main>
-
-  <!-- COLUMNA 3: Lector Detallado (Slide-over) -->
-  <section class="pane pane-reader fixed inset-y-0 right-0 z-50 w-full max-w-2xl bg-paper border-l-2 border-border-ink transform translate-x-full transition-transform duration-300 ease-in-out flex flex-col shadow-2xl" id="pane-article-reader">
+    <!-- LECTOR · overlay a pantalla completa de la sección (no slide-over lateral) -->
+    <section class="pane-reader absolute inset-0 z-[60] bg-paper flex flex-col hidden" id="pane-article-reader">
     <!-- Acciones en el lector -->
     <div class="reader-header-actions p-4 border-b border-border-muted flex justify-between items-center flex-shrink-0">
       <button id="close-reader-btn" class="btn-text text-xs" aria-label="Cerrar lector">
@@ -300,7 +295,9 @@
         </div>
       </article>
     </div>
-  </section>
+    </section>
+
+  </main>
 
   <!-- Navegación Móvil (Pie de página) -->
   <nav class="mobile-navigation flex-shrink-0">
